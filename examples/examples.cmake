@@ -1,0 +1,1 @@
+include(examples/1-triangle/example.cmake)
