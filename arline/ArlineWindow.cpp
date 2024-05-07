@@ -44,14 +44,20 @@ auto arline::Window::Create(
     }
 
 #ifdef _WIN32
+    {
+        auto const useDarkMode{BOOL{1}};
 
-    auto const useDarkMode{ BOOL{1} };
+        DwmSetWindowAttribute(
+            glfwGetWin32Window(m.handle), DWMWA_USE_IMMERSIVE_DARK_MODE,
+            &useDarkMode, sizeof(useDarkMode)
+        );
 
-    DwmSetWindowAttribute(
-        glfwGetWin32Window(m.handle), DWMWINDOWATTRIBUTE::DWMWA_USE_IMMERSIVE_DARK_MODE,
-        &useDarkMode, sizeof(useDarkMode)
-    );
-
+        // Update window to apply new theme
+        glfwGetWindowSize(m.handle, &m.width, &m.height);
+        glfwSetWindowSize(m.handle, m.width + 1, m.height + 1);
+        glfwGetWindowSize(m.handle, &m.width, &m.height);
+        glfwSetWindowSize(m.handle, m.width - 1, m.height - 1);
+    }
 #endif
 
     glfwSetWindowSizeLimits(
