@@ -32,7 +32,7 @@ arline::GraphicsPipeline::GraphicsPipeline(Config&& config) noexcept
 
     for (auto& shader : config.shaders)
     {
-        shaders.emplace_back(shader.get());
+        shaders.emplace_back(shader);
     }
 
     auto constexpr dynamicStates{ std::array{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR} };

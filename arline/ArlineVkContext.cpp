@@ -884,7 +884,7 @@ auto arline::VkContext::CreateDescriptor() noexcept -> v0
 auto arline::VkContext::CreatePipelineLayout() noexcept -> v0
 {
     auto const pushConstantRange{ VkPushConstantRange{
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         .size = 128
     }};
 

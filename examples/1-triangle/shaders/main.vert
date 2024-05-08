@@ -4,9 +4,6 @@
 
 struct Vertex{ float x, y, z, r, g, b; };
 
-layout(constant_id = 0) const uint vboAddrLo = 0;
-layout(constant_id = 1) const uint vboAddrHi = 0;
-
 layout(location = 0) out vec3 fragColor;
 
 layout(buffer_reference) restrict readonly buffer VertexBuffer
@@ -14,9 +11,14 @@ layout(buffer_reference) restrict readonly buffer VertexBuffer
     Vertex vertices[];
 };
 
+layout(push_constant) uniform PushConstant
+{
+    VertexBuffer vbo;
+};
+
+
 void main()
 {
-    VertexBuffer vbo = VertexBuffer(uvec2(vboAddrLo, vboAddrHi));
     Vertex v = vbo.vertices[gl_VertexIndex];
 
     gl_Position = vec4(v.x, v.y, v.z, 1.0);

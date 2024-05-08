@@ -147,8 +147,22 @@ namespace arline {
         vkCmdBindPipeline(m.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     }
 
-    inline auto Commands::draw(u32 vertexCount) const noexcept -> v0
+    inline auto Commands::draw(u32 vertexCount, u32 instanceCount, u32 vertex, u32 instance) const noexcept -> v0
     {
-        vkCmdDraw(m.cmd, vertexCount, 1, 0, 0);
+        vkCmdDraw(m.cmd, vertexCount, instanceCount, vertex, instance);
+    }
+
+    inline auto Commands::pushConstant(auto const* pData) const noexcept -> v0
+    {
+        static constexpr auto stage{ VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT };
+
+        vkCmdPushConstants(
+            m.cmd,
+            VkContext::Get()->pipelineLayout,
+            stage,
+            0,
+            sizeof(*pData),
+            pData
+        );
     }
 }

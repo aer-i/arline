@@ -26,27 +26,10 @@ struct Engine
 
         buffer = ar::StaticBuffer{ vertices, sizeof(vertices) };
 
-        auto const fragShader{ ar::Shader{"shaders/main.frag.spv"} };
-        auto const vertShader{ ar::Shader{"shaders/main.vert.spv", ar::SpecializationInfo{
-            .pData = buffer.getAddress(),
-            .dataSize = sizeof(*buffer.getAddress()),
-            .entries = {
-                ar::EntryInfo{
-                    .id = 0,
-                    .offset = 0,
-                    .size = sizeof(u32)
-                },
-                ar::EntryInfo{
-                    .id = 1,
-                    .offset = sizeof(u32),
-                    .size = sizeof(u32)
-                }
-            }
-        }}};
-
         pipeline = ar::GraphicsPipeline{{
             .shaders = {
-                vertShader, fragShader
+                ar::Shader{"shaders/main.vert.spv"},
+                ar::Shader{"shaders/main.frag.spv"}
             }
         }};
     }
@@ -77,6 +60,7 @@ struct Engine
         commands.beginPresent();
 
         commands.bindPipeline(pipeline);
+        commands.pushConstant(buffer.getAddress());
         commands.draw(3);
 
         commands.endPresent();
@@ -94,7 +78,7 @@ auto main() -> i32
         ar::ContextInfo{
             .infoCallback = [](std::string_view message) { std::printf("INFO: %s\n", message.data()); },
             .errorCallback = [](std::string_view message) { std::printf("ERROR: %s\n", message.data()); exit(1); },
-            .enableValidationLayers = true
+            .enableValidationLayers = false
         }
     }.initEngine(Engine{});
 }

@@ -1,7 +1,6 @@
 #pragma once
 #include "ArlineVkContext.hpp"
 #include "ArlineShader.hpp"
-#include <functional>
 
 namespace arline
 {
@@ -72,13 +71,13 @@ namespace arline
 
         struct Config
         {
-            using Shaders = std::initializer_list<std::reference_wrapper<Shader const>>;
+            using Shaders = std::initializer_list<Shader>;
 
             Shaders     shaders     = Shaders{ };
+            Flags       flags       = Flags{ };
             Topology    topology    = Topology::eTriangleList;
             PolygonMode polygonMode = PolygonMode::eFill;
             CullMode    cullMode    = CullMode::eNone;
-            Flags       flags       = Flags{ };
         };
     };
 }
