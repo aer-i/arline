@@ -68,7 +68,7 @@ arline::GraphicsPipeline::GraphicsPipeline(Config&& config) noexcept
     }};
 
     auto const blendAttachmentState{ VkPipelineColorBlendAttachmentState{
-        .blendEnable = ((config.flags & FlagBits::eColorBlending) == FlagBits::eColorBlending),
+        .blendEnable = static_cast<u32>(config.flags & FlagBits::eColorBlending),
         .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
         .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
@@ -84,8 +84,8 @@ arline::GraphicsPipeline::GraphicsPipeline(Config&& config) noexcept
 
     auto const depthStencilStateCreateInfo{ VkPipelineDepthStencilStateCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = ((config.flags & FlagBits::eDepthTest) == FlagBits::eDepthTest),
-        .depthWriteEnable = ((config.flags & FlagBits::eDepthWrite) == FlagBits::eDepthWrite),
+        .depthTestEnable = static_cast<u32>(config.flags & FlagBits::eDepthTest),
+        .depthWriteEnable = static_cast<u32>(config.flags & FlagBits::eDepthWrite),
         .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
         .stencilTestEnable = false
     }};

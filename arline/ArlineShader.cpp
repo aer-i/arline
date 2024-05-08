@@ -2,7 +2,7 @@
 #include <format>
 #include <fstream>
 
-arline::Shader::Shader(std::filesystem::path const& path) noexcept
+arline::Shader::Shader(std::filesystem::path const& path, SpecializationInfo const& specializationInfo) noexcept
     : m{}
 {
     if (!std::filesystem::exists(path))
@@ -52,6 +52,29 @@ arline::Shader::Shader(std::filesystem::path const& path) noexcept
         .module = VkContext::CreateShaderModule(buffer),
         .pName = "main"
     };
+
+    if (specializationInfo.entries.size() > 0)
+    {
+        m.mapEntries.reserve(specializationInfo.entries.size());
+
+        for (auto const& entry : specializationInfo.entries)
+        {
+            m.mapEntries.emplace_back(VkSpecializationMapEntry{
+                .constantID = entry.id,
+                .offset = entry.offset,
+                .size = entry.size
+            });
+        }
+
+        m.specializationInfo = {
+            .mapEntryCount = static_cast<u32>(m.mapEntries.size()),
+            .pMapEntries = m.mapEntries.data(),
+            .dataSize = specializationInfo.dataSize,
+            .pData = specializationInfo.pData
+        };
+
+        m.shaderStage.pSpecializationInfo = &m.specializationInfo;
+    }
 }
 
 arline::Shader::~Shader() noexcept

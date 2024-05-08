@@ -5,6 +5,8 @@
 #include <string_view>
 #include <vector>
 #include <array>
+#include <tuple>
+#include <functional>
 
 namespace arline
 {
@@ -26,7 +28,6 @@ namespace arline
         auto operator=(VkContext&&) -> VkContext& = delete;
 
     private:
-        friend class Context;
         static auto Create(ContextInfo const& info) noexcept -> v0;
         static auto Teardown() noexcept -> v0;
         static auto WaitForDevice() noexcept -> v0;
@@ -35,8 +36,11 @@ namespace arline
     public:
         static auto AcquireNextImage() noexcept -> v0;
         static auto PresentFrame() noexcept -> v0;
+        static auto TransferSubmit(std::function<v0(VkCommandBuffer)>&& function) noexcept -> v0;
         static auto CreateShaderModule(std::vector<c8> const& code) noexcept -> VkShaderModule;
         static auto CreatePipeline(VkGraphicsPipelineCreateInfo const* pInfo) noexcept -> VkPipeline;
+        static auto CreateStagingBuffer(v0 const* pData, u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>;
+        static auto CreateStaticBuffer(u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>;
 
     public:
         static inline auto Get() { return &m; }
@@ -56,6 +60,7 @@ namespace arline
         static auto CreateTransferResources() noexcept -> v0;
 
     private:
+        friend class Context;
         friend class Commands;
         static inline struct Members
         {

@@ -170,6 +170,40 @@ auto arline::VkContext::PresentFrame() noexcept -> v0
     ++m.frameIndex %= Members::framesInFlight;
 }
 
+auto arline::VkContext::TransferSubmit(std::function<v0(VkCommandBuffer)>&& function) noexcept -> v0
+{
+    auto const beginInfo{ VkCommandBufferBeginInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    }};
+
+    auto const submitInfo{ VkSubmitInfo{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &m.transferCommandBuffer
+    }};
+
+    vkResetFences(m.device, 1, &m.transferFence);
+
+    vkErrorCheck<"Failed to reset VkCommandPool">(
+        vkResetCommandPool(m.device, m.transferCommandPool, 0)
+    );
+
+    vkErrorCheck<"Failed to begin VkCommandBuffer">(
+        vkBeginCommandBuffer(m.transferCommandBuffer, &beginInfo)
+    );
+    function(m.transferCommandBuffer);
+    vkErrorCheck<"Failed to end VkCommandBuffer">(
+        vkEndCommandBuffer(m.transferCommandBuffer)
+    );
+
+    vkErrorCheck<"Failed to submit commands">(
+        vkQueueSubmit(m.graphicsQueue, 1, &submitInfo, m.transferFence)
+    );
+
+    vkWaitForFences(m.device, 1, &m.transferFence, 0u, ~0ull);
+}
+
 auto arline::VkContext::CreateShaderModule(std::vector<c8> const& code) noexcept -> VkShaderModule
 {
     auto const shaderModuleCreateInfo{ VkShaderModuleCreateInfo{
@@ -196,6 +230,64 @@ auto arline::VkContext::CreatePipeline(VkGraphicsPipelineCreateInfo const* pInfo
     );
 
     return pipeline;
+}
+
+auto arline::VkContext::CreateStagingBuffer(v0 const* pData, u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>
+{
+    auto const bufferCreateInfo{ VkBufferCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+    }};
+
+    auto const allocationCreateInfo{ VmaAllocationCreateInfo{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO
+    }};
+
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VmaAllocationInfo allocationInfo;
+
+    vkErrorCheck<"Failed to allocate VkBuffer">(
+        vmaCreateBuffer(m.allocator, &bufferCreateInfo, &allocationCreateInfo, &buffer, &allocation, &allocationInfo)
+    );
+
+    memcpy(allocationInfo.pMappedData, pData, size);
+    vmaFlushAllocation(m.allocator, allocation, 0, static_cast<u64>(size));
+
+    return { buffer, allocation };
+}
+
+auto arline::VkContext::CreateStaticBuffer(u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>
+{
+    auto static constexpr bufferUsage{ VkBufferUsageFlags{
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+    }};
+
+    auto const bufferCreateInfo{ VkBufferCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = bufferUsage
+    }};
+
+    auto const allocationCreateInfo{ VmaAllocationCreateInfo{
+        .usage = VMA_MEMORY_USAGE_AUTO,
+        .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+    }};
+
+    VkBuffer buffer;
+    VmaAllocation allocation;
+
+    vkErrorCheck<"Failed to allocate VkBuffer">(
+        vmaCreateBuffer(m.allocator, &bufferCreateInfo, &allocationCreateInfo, &buffer, &allocation, nullptr)
+    );
+
+    return { buffer, allocation };
 }
 
 auto arline::VkContext::CreateInstance() noexcept -> v0

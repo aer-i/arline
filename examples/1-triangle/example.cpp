@@ -5,6 +5,7 @@ using namespace ar::types;
 
 struct Engine
 {
+    ar::StaticBuffer buffer;
     ar::Pipeline pipeline;
     f64 currentTime  = ar::time::get();
     f64 previousTime = ar::time::get();
@@ -13,8 +14,35 @@ struct Engine
 
     inline Engine() noexcept
     {
-        auto const vertShader{ ar::Shader{"shaders/main.vert.spv"} };
+        struct Vertex
+        {
+            f32 x, y, z;
+            f32 r, g, b;
+        } vertices[] = {
+            { 0.5f, 0.5f, 0.0f, 1.f, 0.f, 0.f },
+            { -.5f, 0.5f, 0.0f, 0.f, 1.f, 0.f },
+            { 0.0f, -.5f, 0.0f, 0.f, 0.f, 1.f },
+        };
+
+        buffer = ar::StaticBuffer{ vertices, sizeof(vertices) };
+
         auto const fragShader{ ar::Shader{"shaders/main.frag.spv"} };
+        auto const vertShader{ ar::Shader{"shaders/main.vert.spv", ar::SpecializationInfo{
+            .pData = buffer.getAddress(),
+            .dataSize = sizeof(*buffer.getAddress()),
+            .entries = {
+                ar::EntryInfo{
+                    .id = 0,
+                    .offset = 0,
+                    .size = sizeof(u32)
+                },
+                ar::EntryInfo{
+                    .id = 1,
+                    .offset = sizeof(u32),
+                    .size = sizeof(u32)
+                }
+            }
+        }}};
 
         pipeline = ar::GraphicsPipeline{{
             .shaders = {

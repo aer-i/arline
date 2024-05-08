@@ -18,6 +18,7 @@ target_sources(arline PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlineVkContext.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlinePipeline.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlineShader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlineBuffer.cpp
 )
 
 target_include_directories(arline PUBLIC

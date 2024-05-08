@@ -3,6 +3,7 @@
 #include "ArlineVkContext.hpp"
 #include "ArlineCommands.hpp"
 #include "ArlinePipeline.hpp"
+#include "ArlineBuffer.hpp"
 #include "ArlineTime.hpp"
 
 namespace arline
