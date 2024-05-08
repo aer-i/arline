@@ -41,6 +41,7 @@ namespace arline
         static auto CreatePipeline(VkGraphicsPipelineCreateInfo const* pInfo) noexcept -> VkPipeline;
         static auto CreateStagingBuffer(v0 const* pData, u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>;
         static auto CreateStaticBuffer(u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>;
+        static auto CreateDynamicBuffer(u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation, v0*>;
 
     public:
         static inline auto Get() { return &m; }
@@ -88,6 +89,7 @@ namespace arline
             std::array<Frame, framesInFlight> frames;
             Frame* currentFrame;
             u32 frameIndex, imageIndex;
+            u32 bufferIndex;
             VmaAllocator allocator;
             VkInstance instance;
             VkDebugUtilsMessengerEXT debugMessenger;

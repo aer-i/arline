@@ -1,7 +1,6 @@
 #pragma once
 #include "ArlineTypes.hpp"
 #include "ArlineVkContext.hpp"
-#include <concepts>
 
 namespace arline
 {
@@ -10,14 +9,6 @@ namespace arline
         VkBuffer handle;
         VmaAllocation allocation;
         u64 address;
-    };
-
-    template<class T>
-    concept Buffer = requires(T t)
-    {
-        { t.getHandle() } -> std::same_as<BufferHandle const&>;
-        { t.getAddress() } -> std::same_as<u64 const*>;
-        { t.getSize() } -> std::same_as<u32>;
     };
 
     class StaticBuffer
@@ -55,11 +46,21 @@ namespace arline
         auto operator=(DynamicBuffer const&) -> DynamicBuffer& = delete;
         auto operator=(DynamicBuffer&& other) noexcept -> DynamicBuffer&;
 
+    public:
+        auto write(v0 const* pData) noexcept -> v0;
+        auto write(v0 const* pData, u32 size) noexcept -> v0;
+        auto write(v0 const* pData, u32 size, u32 offset) noexcept -> v0;
+
+    public:
+        inline auto getHandle() const noexcept ->  BufferHandle const& { return m.buffers[VkContext::Get()->bufferIndex]; }
+        inline auto getAddress() const noexcept -> u64 const* { return &m.buffers[VkContext::Get()->bufferIndex].address; }
+        inline auto getSize() const noexcept -> u32 { return m.size; }
+
     private:
         struct Members
         {
             BufferHandle buffers[2];
-            u8* mappedMemories[2];
+            u8* mappedData[2];
             u32 size;
         } m;
     };

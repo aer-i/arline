@@ -5,14 +5,15 @@
 #include "ArlinePipeline.hpp"
 #include "ArlineBuffer.hpp"
 #include "ArlineTime.hpp"
+#include <concepts>
 
 namespace arline
 {
     template<class T>
     concept Engine = requires(T t)
     {
-        t.update();
-        t.recordCommands(Commands{});
+        { t.update() } -> std::same_as<v0>;
+        { t.recordCommands(Commands{}) } -> std::same_as<v0>;
     };
 
     class Context

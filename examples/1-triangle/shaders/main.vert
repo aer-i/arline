@@ -1,26 +1,27 @@
 #version 460
 #extension GL_EXT_buffer_reference : require
-#extension GL_EXT_buffer_reference_uvec2 : require
-
-struct Vertex{ float x, y, z, r, g, b; };
 
 layout(location = 0) out vec3 fragColor;
 
 layout(buffer_reference) restrict readonly buffer VertexBuffer
 {
-    Vertex vertices[];
+    float data[];
 };
 
 layout(push_constant) uniform PushConstant
 {
     VertexBuffer vbo;
+    float r, g, b;
 };
-
 
 void main()
 {
-    Vertex v = vbo.vertices[gl_VertexIndex];
+    vec3 pos = vec3(
+        vbo.data[gl_VertexIndex * 3 + 0],
+        vbo.data[gl_VertexIndex * 3 + 1],
+        vbo.data[gl_VertexIndex * 3 + 2]
+    );
 
-    gl_Position = vec4(v.x, v.y, v.z, 1.0);
-    fragColor = vec3(v.r, v.g, v.b);
+    gl_Position = vec4(pos, 1.0);
+    fragColor = vec3(r, g, b);
 }

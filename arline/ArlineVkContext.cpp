@@ -168,6 +168,7 @@ auto arline::VkContext::PresentFrame() noexcept -> v0
     }
 
     ++m.frameIndex %= Members::framesInFlight;
+    m.bufferIndex = !m.bufferIndex;
 }
 
 auto arline::VkContext::TransferSubmit(std::function<v0(VkCommandBuffer)>&& function) noexcept -> v0
@@ -264,7 +265,6 @@ auto arline::VkContext::CreateStaticBuffer(u32 size) noexcept -> std::tuple<VkBu
     auto static constexpr bufferUsage{ VkBufferUsageFlags{
         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
     }};
@@ -288,6 +288,39 @@ auto arline::VkContext::CreateStaticBuffer(u32 size) noexcept -> std::tuple<VkBu
     );
 
     return { buffer, allocation };
+}
+
+auto arline::VkContext::CreateDynamicBuffer(u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation, v0*>
+{
+    auto static constexpr bufferUsage{ VkBufferUsageFlags{
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+    }};
+
+    auto const bufferCreateInfo{ VkBufferCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = bufferUsage
+    }};
+
+    auto const allocationCreateInfo{ VmaAllocationCreateInfo{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO,
+        .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    }};
+
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VmaAllocationInfo allocationInfo;
+
+    vkErrorCheck<"Failed to allocate VkBuffer">(
+        vmaCreateBuffer(m.allocator, &bufferCreateInfo, &allocationCreateInfo, &buffer, &allocation, &allocationInfo)
+    );
+
+    return { buffer, allocation, allocationInfo.pMappedData };
 }
 
 auto arline::VkContext::CreateInstance() noexcept -> v0

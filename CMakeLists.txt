@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 
 project(arline)
+option(ARLINE_BUILD_EXAMPLES "Build examples" OFF)
 
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -28,4 +29,6 @@ target_include_directories(arline PUBLIC
 
 target_link_libraries(arline PUBLIC glfw Vulkan::Headers volk)
 
-add_subdirectory(examples)
+if (ARLINE_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()

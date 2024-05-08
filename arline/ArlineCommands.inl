@@ -56,7 +56,7 @@ namespace arline {
             imageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
         }
 
-        auto const dependency{VkDependencyInfo{
+        auto const dependency{ VkDependencyInfo{
             .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
             .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
             .imageMemoryBarrierCount = 1,
@@ -65,20 +65,15 @@ namespace arline {
 
         vkCmdPipelineBarrier2(m.cmd, &dependency);
 
-        auto const colorAttachment{VkRenderingAttachmentInfo{
+        auto const colorAttachment{ VkRenderingAttachmentInfo{
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .imageView = m.ctx->swapchainImages[m.ctx->imageIndex].view,
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .clearValue = {
-                .color = VkClearColorValue{
-                    .float32 = {0.5f, 0.25f, 0.75f, 1.f}
-                }
-            }
+            .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE
         }};
 
-        auto const renderingInfo{VkRenderingInfo{
+        auto const renderingInfo{ VkRenderingInfo{
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
             .renderArea = {
                 .extent = m.ctx->swapchainExtent
@@ -92,7 +87,7 @@ namespace arline {
         vkCmdBindDescriptorSets(m.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m.ctx->pipelineLayout, 0, 1, &m.ctx->descriptorSet, 0, nullptr);
 
         {
-            auto const viewport{VkViewport{
+            auto const viewport{ VkViewport{
                 .y = static_cast<f32>(m.ctx->swapchainExtent.height),
                 .width  =  static_cast<f32>(m.ctx->swapchainExtent.width),
                 .height = -static_cast<f32>(m.ctx->swapchainExtent.height),
@@ -102,7 +97,7 @@ namespace arline {
             vkCmdSetViewport(m.cmd, 0, 1, &viewport);
         }
         {
-            auto const scissor{VkRect2D{
+            auto const scissor{ VkRect2D{
                 .extent = m.ctx->swapchainExtent
             }};
 
@@ -154,6 +149,7 @@ namespace arline {
 
     inline auto Commands::pushConstant(auto const* pData) const noexcept -> v0
     {
+        static_assert(sizeof(*pData) <= 128);
         static constexpr auto stage{ VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT };
 
         vkCmdPushConstants(
@@ -162,6 +158,20 @@ namespace arline {
             stage,
             0,
             sizeof(*pData),
+            pData
+        );
+    }
+
+    inline auto Commands::pushConstant(v0 const *pData, u32 dataSize) const noexcept -> v0
+    {
+        static constexpr auto stage{ VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT };
+
+        vkCmdPushConstants(
+            m.cmd,
+            VkContext::Get()->pipelineLayout,
+            stage,
+            0,
+            dataSize,
             pData
         );
     }
