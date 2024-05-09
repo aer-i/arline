@@ -1,6 +1,7 @@
 #include "ArlineShader.hpp"
 #include <format>
 #include <fstream>
+#include <cstring>
 
 arline::Shader::Shader(std::filesystem::path const& path, SpecializationInfo const& specializationInfo) noexcept
     : m{}
@@ -49,7 +50,48 @@ arline::Shader::Shader(std::filesystem::path const& path, SpecializationInfo con
     m.shaderStage = VkPipelineShaderStageCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = stage,
-        .module = VkContext::CreateShaderModule(buffer),
+        .module = VkContext::CreateShaderModule(buffer.data(), buffer.size()),
+        .pName = "main"
+    };
+
+    if (specializationInfo.entries.size() > 0)
+    {
+        m.mapEntries.reserve(specializationInfo.entries.size());
+
+        for (auto const& entry : specializationInfo.entries)
+        {
+            m.mapEntries.emplace_back(VkSpecializationMapEntry{
+                .constantID = entry.id,
+                .offset = entry.offset,
+                .size = entry.size
+            });
+        }
+
+        m.specializationInfo = {
+            .mapEntryCount = static_cast<u32>(m.mapEntries.size()),
+            .pMapEntries = m.mapEntries.data(),
+            .dataSize = specializationInfo.dataSize,
+            .pData = specializationInfo.pData
+        };
+
+        m.shaderStage.pSpecializationInfo = &m.specializationInfo;
+    }
+}
+
+arline::Shader::Shader(v0 const* pCode, u64 size, ShaderStage stage, SpecializationInfo const& specializationInfo) noexcept
+{
+    VkShaderStageFlagBits constexpr stages[] = { 
+        VK_SHADER_STAGE_VERTEX_BIT,
+        VK_SHADER_STAGE_FRAGMENT_BIT,
+        VK_SHADER_STAGE_COMPUTE_BIT
+    };
+
+    auto selectedStage{ stages[static_cast<u32>(stage)] };
+
+    m.shaderStage = VkPipelineShaderStageCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = selectedStage,
+        .module = VkContext::CreateShaderModule(pCode, size),
         .pName = "main"
     };
 

@@ -18,11 +18,19 @@ namespace arline
         std::initializer_list<EntryInfo> entries;
     };
 
+    enum class ShaderStage : u32
+    {
+        eVertex   = 0x00000000,
+        eFragment = 0x00000001,
+        eCompute  = 0x00000002
+    };
+
     class Shader
     {
     public:
         Shader() = delete;
         Shader(std::filesystem::path const& path, SpecializationInfo const& specializationInfo = {}) noexcept;
+        Shader(v0 const* pCode, u64 size, ShaderStage stage, SpecializationInfo const& specializationInfo = {}) noexcept;
         ~Shader() noexcept;
         Shader(Shader const&) = delete;
         Shader(Shader&& other) noexcept;

@@ -6,13 +6,10 @@ using namespace ar::types;
 
 struct Engine
 {
-    ar::StaticBuffer buffer;
+    static consteval u32 UseImgui() { return 0; }
+
+    ar::StaticBuffer vbo;
     ar::Pipeline pipeline;
-    
-    f64 currentTime  = ar::time::get();
-    f64 previousTime = ar::time::get();
-    f64 timeDiff     = f64{ };
-    u32 frameCounter = u32{ };
 
     inline Engine() noexcept
     {
@@ -23,7 +20,7 @@ struct Engine
             { 0.0f, -.5f, 0.0f }
         };
 
-        buffer = ar::StaticBuffer{ vertices, sizeof(vertices) };
+        vbo = ar::StaticBuffer{ vertices, sizeof(vertices) };
 
         pipeline = ar::GraphicsPipeline{{
             .shaders = {
@@ -33,32 +30,17 @@ struct Engine
         }};
     }
 
+    inline auto renderGui() -> v0 {}
     inline auto update() noexcept -> v0
     {
         ar::Window::PollEvents();
-
-        currentTime = ar::time::get();
-        timeDiff = currentTime - previousTime;
-        ++frameCounter;
-
-        if (timeDiff > 0.25)
-        {
-            ar::Window::SetTitle(std::format(
-                "FPS: {}, MS: {:.3f}",
-                static_cast<u32>((1.0 / timeDiff) * frameCounter),
-                (timeDiff / frameCounter) * 1000.0
-            ));
-
-            previousTime = currentTime;
-            frameCounter = {};
-        }
     }
 
     inline auto recordCommands(ar::Commands const& commands) noexcept -> v0
     {
         struct{ u64 vbo; f32 color[3]; }
         pushConstant {
-            .vbo = *buffer.getAddress(),
+            .vbo = *vbo.getAddress(),
             .color = {
                 static_cast<f32>(std::sin(ar::time::get() * 1.0)) * 0.5f + 0.5f,
                 static_cast<f32>(std::sin(ar::time::get() * 2.0)) * 0.5f + 0.5f,

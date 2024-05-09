@@ -6,7 +6,10 @@ arline::Pipeline::Pipeline() noexcept
 
 arline::Pipeline::~Pipeline() noexcept
 {
-    vkDestroyPipeline(VkContext::Get()->device, p.handle, nullptr);
+    if (p.handle)
+    {
+        vkDestroyPipeline(VkContext::Get()->device, p.handle, nullptr);
+    }
 }
 
 arline::Pipeline::Pipeline(Pipeline&& other) noexcept
@@ -17,8 +20,7 @@ arline::Pipeline::Pipeline(Pipeline&& other) noexcept
 
 auto arline::Pipeline::operator=(Pipeline&& other) noexcept -> Pipeline&
 {
-    vkDestroyPipeline(VkContext::Get()->device, p.handle, nullptr);
-
+    this->~Pipeline();
     this->p = other.p;
     other.p = {};
 

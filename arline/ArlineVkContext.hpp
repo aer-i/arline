@@ -37,11 +37,12 @@ namespace arline
         static auto AcquireNextImage() noexcept -> v0;
         static auto PresentFrame() noexcept -> v0;
         static auto TransferSubmit(std::function<v0(VkCommandBuffer)>&& function) noexcept -> v0;
-        static auto CreateShaderModule(std::vector<c8> const& code) noexcept -> VkShaderModule;
+        static auto CreateShaderModule(v0 const* pData, u64 size) noexcept -> VkShaderModule;
         static auto CreatePipeline(VkGraphicsPipelineCreateInfo const* pInfo) noexcept -> VkPipeline;
         static auto CreateStagingBuffer(v0 const* pData, u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>;
         static auto CreateStaticBuffer(u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>;
         static auto CreateDynamicBuffer(u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation, v0*>;
+        static auto CreateTexture2D(u32 width, u32 height) noexcept -> std::tuple<VkImage, VmaAllocation, VkImageView, u32>;
 
     public:
         static inline auto Get() { return &m; }
@@ -83,35 +84,35 @@ namespace arline
                 VkFence renderFence;
             };
 
+            b8 validation;
             v0 (*infoCallback)(std::string_view);
             v0 (*errorCallback)(std::string_view);
-            std::vector<SwapchainImage> swapchainImages;
-            std::array<Frame, framesInFlight> frames;
-            Frame* currentFrame;
-            u32 frameIndex, imageIndex;
-            u32 bufferIndex;
-            VmaAllocator allocator;
             VkInstance instance;
             VkDebugUtilsMessengerEXT debugMessenger;
             VkSurfaceKHR surface;
             VkPhysicalDevice physicalDevice;
+            VkDescriptorPool descriptorPool;
+            VkDescriptorSetLayout setLayout;
+            u32 graphicsFamily;
+            u32 presentFamily;
+            VkFormat colorFormat;
+            VmaAllocator allocator;
             VkDevice device;
             VkQueue graphicsQueue;
             VkQueue presentQueue;
             VkExtent2D swapchainExtent;
             VkSwapchainKHR swapchain;
             VkPipelineLayout pipelineLayout;
-            VkDescriptorPool descriptorPool;
-            VkDescriptorSetLayout setLayout;
             VkDescriptorSet descriptorSet;
             VkSampler sampler;
             VkFence transferFence;
             VkCommandPool transferCommandPool;
             VkCommandBuffer transferCommandBuffer;
-            VkFormat colorFormat;
-            u32 graphicsFamily;
-            u32 presentFamily;
-            b8 validation;
+            u32 currentTextureIndex;
+            u32 bufferIndex;
+            u32 frameIndex, imageIndex;
+            std::array<Frame, framesInFlight> frames;
+            std::array<SwapchainImage, 5> swapchainImages;
         } m;
     };
 }

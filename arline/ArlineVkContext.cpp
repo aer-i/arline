@@ -2,9 +2,12 @@
 #define VMA_IMPLEMENTATION
 #include "ArlineVkContext.hpp"
 #include "ArlineWindow.hpp"
-#include <GLFW/glfw3.h>
+#include "ArlineImgui.hpp"
+#include "ArlinePipeline.hpp"
+#include "ArlineShader.hpp"
 #include <vector>
 #include <format>
+#include <cmath>
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     [[maybe_unused]] VkDebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -43,9 +46,9 @@ namespace surface
 auto arline::VkContext::Create(ContextInfo const& info) noexcept -> v0
 {
     m = {
+        .validation = info.enableValidationLayers,
         .infoCallback = info.infoCallback,
-        .errorCallback = info.errorCallback,
-        .validation = info.enableValidationLayers
+        .errorCallback = info.errorCallback
     };
 
     CreateInstance();
@@ -103,16 +106,15 @@ auto arline::VkContext::RecreateSwapchain() noexcept -> v0
 {
     vkDeviceWaitIdle(m.device);
     CreateSwapchain();
+    ImGuiContext::CreatePipeline();
 }
 
 auto arline::VkContext::AcquireNextImage() noexcept -> v0
 {
-    m.currentFrame = &m.frames[m.frameIndex];
+    vkWaitForFences(m.device, 1, &m.frames[m.frameIndex].renderFence, 0u, ~0ull);
+    vkResetFences(m.device, 1, &m.frames[m.frameIndex].renderFence);
 
-    vkWaitForFences(m.device, 1, &m.currentFrame->renderFence, 0u, ~0ull);
-    vkResetFences(m.device, 1, &m.currentFrame->renderFence);
-
-    auto result{ vkAcquireNextImageKHR(m.device, m.swapchain, ~0ull, m.currentFrame->acquireSemaphore, nullptr, &m.imageIndex) };
+    auto result{ vkAcquireNextImageKHR(m.device, m.swapchain, ~0ull, m.frames[m.frameIndex].acquireSemaphore, nullptr, &m.imageIndex) };
     switch (result)
     {
     case VK_SUCCESS:
@@ -133,22 +135,22 @@ auto arline::VkContext::PresentFrame() noexcept -> v0
     auto const submitInfo{ VkSubmitInfo{
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &m.currentFrame->acquireSemaphore,
+        .pWaitSemaphores = &m.frames[m.frameIndex].acquireSemaphore,
         .pWaitDstStageMask = &waitStage,
         .commandBufferCount = 1,
-        .pCommandBuffers = &m.currentFrame->commandBuffer,
+        .pCommandBuffers = &m.frames[m.frameIndex].commandBuffer,
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &m.currentFrame->renderSemaphore
+        .pSignalSemaphores = &m.frames[m.frameIndex].renderSemaphore
     }};
 
     vkErrorCheck<"Failed to submit commands">(
-        vkQueueSubmit(m.graphicsQueue, 1, &submitInfo, m.currentFrame->renderFence)
+        vkQueueSubmit(m.graphicsQueue, 1, &submitInfo, m.frames[m.frameIndex].renderFence)
     );
 
     auto const presentInfo{ VkPresentInfoKHR{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &m.currentFrame->renderSemaphore,
+        .pWaitSemaphores = &m.frames[m.frameIndex].renderSemaphore,
         .swapchainCount = 1,
         .pSwapchains = &m.swapchain,
         .pImageIndices = &m.imageIndex
@@ -205,12 +207,12 @@ auto arline::VkContext::TransferSubmit(std::function<v0(VkCommandBuffer)>&& func
     vkWaitForFences(m.device, 1, &m.transferFence, 0u, ~0ull);
 }
 
-auto arline::VkContext::CreateShaderModule(std::vector<c8> const& code) noexcept -> VkShaderModule
+auto arline::VkContext::CreateShaderModule(v0 const* pData, u64 size) noexcept -> VkShaderModule
 {
     auto const shaderModuleCreateInfo{ VkShaderModuleCreateInfo{
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = code.size(),
-        .pCode = reinterpret_cast<u32 const*>(code.data())
+        .codeSize = size,
+        .pCode = static_cast<u32 const*>(pData)
     }};
 
     VkShaderModule shaderModule;
@@ -321,6 +323,64 @@ auto arline::VkContext::CreateDynamicBuffer(u32 size) noexcept -> std::tuple<VkB
     );
 
     return { buffer, allocation, allocationInfo.pMappedData };
+}
+
+auto arline::VkContext::CreateTexture2D(u32 width, u32 height) noexcept -> std::tuple<VkImage, VmaAllocation, VkImageView, u32>
+{
+    auto mipLevels{ static_cast<u32>(std::floor(std::log2(std::max(width, height)))) + 1 };
+
+    auto const imageCreateInfo{ VkImageCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = VK_FORMAT_R8G8B8A8_UNORM,
+        .extent = {
+            .width = static_cast<u32>(width),
+            .height = static_cast<u32>(height),
+            .depth = 1u
+        },
+        .mipLevels = mipLevels,
+        .arrayLayers = 1u,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+    }};
+
+    auto const allocationCreateInfo{ VmaAllocationCreateInfo{
+        .usage = VMA_MEMORY_USAGE_AUTO,
+        .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+    }};
+
+    VkImage image;
+    VmaAllocation allocation;
+    VkImageView view;
+
+    vkErrorCheck<"Failed to allocate VkImage">(
+        vmaCreateImage(m.allocator, &imageCreateInfo, &allocationCreateInfo, &image, &allocation, nullptr)
+    );
+
+    auto const imageViewCreateInfo{ VkImageViewCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = VK_FORMAT_R8G8B8A8_UNORM,
+        .components = {
+            .r = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .a = VK_COMPONENT_SWIZZLE_IDENTITY
+        },
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .levelCount = mipLevels,
+            .layerCount = 1u
+        }
+    }};
+
+    vkErrorCheck<"Failed to create VkImageView">(
+        vkCreateImageView(m.device, &imageViewCreateInfo, nullptr, &view)
+    );
+
+    return { image, allocation, view, mipLevels };
 }
 
 auto arline::VkContext::CreateInstance() noexcept -> v0
@@ -484,8 +544,17 @@ auto arline::VkContext::CreatePhysicalDevice() noexcept -> v0
         } if (!vulkan12Features.descriptorBindingPartiallyBound) {
             missingFeature = std::format("GPU {} doesn't support descriptorBindingPartiallyBound feature", properties.properties.deviceName);
             continue;
+        } if (!vulkan12Features.runtimeDescriptorArray) {
+            missingFeature = std::format("GPU {} doesn't support runtimeDescriptorArray feature", properties.properties.deviceName);
+            continue;
         } if (!vulkan12Features.bufferDeviceAddress) {
             missingFeature = std::format("GPU {} doesn't support bufferDeviceAddress feature", properties.properties.deviceName);
+            continue;
+        } if (!vulkan11Features.storageBuffer16BitAccess) {
+            missingFeature = std::format("GPU {} doesn't support storageBuffer16BitAccess feature", properties.properties.deviceName);
+            continue;
+        } if (!vulkan11Features.shaderDrawParameters) {
+            missingFeature = std::format("GPU {} doesn't support shaderDrawParameters feature", properties.properties.deviceName);
             continue;
         } if (!features.features.multiDrawIndirect) {
             missingFeature = std::format("GPU {} doesn't support multiDrawIndirect feature", properties.properties.deviceName);
@@ -588,7 +657,9 @@ auto arline::VkContext::CreateDevice() noexcept -> v0
     }();
 
     auto vulkan11Features{ VkPhysicalDeviceVulkan11Features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .storageBuffer16BitAccess = true,
+        .shaderDrawParameters = true
     }};
 
     auto vulkan12Features{ VkPhysicalDeviceVulkan12Features{
@@ -596,6 +667,7 @@ auto arline::VkContext::CreateDevice() noexcept -> v0
         .pNext = &vulkan11Features,
         .drawIndirectCount = true,
         .descriptorBindingPartiallyBound = true,
+        .runtimeDescriptorArray = true,
         .bufferDeviceAddress = true
     }};
 
@@ -695,8 +767,6 @@ auto arline::VkContext::CreateSwapchain() noexcept -> v0
         }
     }
 
-    m.swapchainImages.clear();
-
     auto format{ surface::getFormat() };
     auto extent{ surface::getExtent() };
     auto minImageCount{ surface::getClampedImageCount(3u) };
@@ -740,8 +810,7 @@ auto arline::VkContext::CreateSwapchain() noexcept -> v0
     auto images{ std::vector<VkImage>(imageCount) };
     vkGetSwapchainImagesKHR(m.device, m.swapchain, &imageCount, images.data());
 
-    m.swapchainImages.reserve(images.size());
-    for (auto& image : images)
+    for (auto i{ u32{} }; auto& image : images)
     {
         auto const imageViewCreateInfo{ VkImageViewCreateInfo{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -767,7 +836,13 @@ auto arline::VkContext::CreateSwapchain() noexcept -> v0
             vkCreateImageView(m.device, &imageViewCreateInfo, nullptr, &view)
         );
 
-        m.swapchainImages.emplace_back(image, view, VK_IMAGE_LAYOUT_UNDEFINED);
+        m.swapchainImages[i] = Members::SwapchainImage{
+            .handle = image, 
+            .view = view,
+            .layout = VK_IMAGE_LAYOUT_UNDEFINED
+        };
+
+        ++i;
     }
 }
 

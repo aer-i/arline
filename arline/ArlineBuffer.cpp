@@ -46,7 +46,10 @@ arline::StaticBuffer::StaticBuffer(v0 const* pData, u32 size) noexcept
 
 arline::StaticBuffer::~StaticBuffer() noexcept
 {
-    vmaDestroyBuffer(VkContext::Get()->allocator, m.buffer.handle, m.buffer.allocation);
+    if (m.buffer.handle)
+    {
+        vmaDestroyBuffer(VkContext::Get()->allocator, m.buffer.handle, m.buffer.allocation);
+    }
 }
 
 arline::StaticBuffer::StaticBuffer(StaticBuffer&& other) noexcept
@@ -57,8 +60,7 @@ arline::StaticBuffer::StaticBuffer(StaticBuffer&& other) noexcept
 
 auto arline::StaticBuffer::operator=(StaticBuffer&& other) noexcept -> StaticBuffer&
 {
-    vmaDestroyBuffer(VkContext::Get()->allocator, m.buffer.handle, m.buffer.allocation);
-
+    this->~StaticBuffer();
     this->m = other.m;
     other.m = {};
 
@@ -93,7 +95,10 @@ arline::DynamicBuffer::~DynamicBuffer() noexcept
 {
     for (auto& buffer : m.buffers)
     {
-        vmaDestroyBuffer(VkContext::Get()->allocator, buffer.handle, buffer.allocation);
+        if (buffer.handle)
+        {
+            vmaDestroyBuffer(VkContext::Get()->allocator, buffer.handle, buffer.allocation);
+        }
     }
 }
 
@@ -106,7 +111,6 @@ arline::DynamicBuffer::DynamicBuffer(DynamicBuffer&& other) noexcept
 auto arline::DynamicBuffer::operator=(DynamicBuffer&& other) noexcept -> DynamicBuffer&
 {
     this->~DynamicBuffer();
-
     this->m = other.m;
     other.m = {};
 

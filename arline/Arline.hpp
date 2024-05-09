@@ -4,7 +4,9 @@
 #include "ArlineCommands.hpp"
 #include "ArlinePipeline.hpp"
 #include "ArlineBuffer.hpp"
+#include "ArlineImage.hpp"
 #include "ArlineTime.hpp"
+#include "ArlineImgui.hpp"
 #include <concepts>
 
 namespace arline
@@ -13,7 +15,9 @@ namespace arline
     concept Engine = requires(T t)
     {
         { t.update() } -> std::same_as<v0>;
+        { t.renderGui() } -> std::same_as<v0>;
         { t.recordCommands(Commands{}) } -> std::same_as<v0>;
+        { T::UseImgui() } -> std::same_as<u32>;
     };
 
     class Context
@@ -23,10 +27,14 @@ namespace arline
         {
             Window::Create(windowInfo, contextInfo.infoCallback, contextInfo.errorCallback);
             VkContext::Create(contextInfo);
+            ImGuiContext::Create();
         }
 
         ~Context() noexcept
         {
+            m.commands.m = {};
+
+            ImGuiContext::Teardown();
             VkContext::Teardown();
             Window::Teardown();
         }
@@ -58,6 +66,13 @@ namespace arline
                     }
 
                     VkContext::RecreateSwapchain();
+                }
+
+                if constexpr (engine.UseImgui())
+                {
+                    ImGuiContext::NewFrame();
+                    engine.renderGui();
+                    ImGuiContext::EndFrame();
                 }
 
                 m.commands.begin();
