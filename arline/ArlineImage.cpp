@@ -1,6 +1,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "ArlineImage.hpp"
 #include <stb_image.h>
+#include <format>
 
 arline::Image::~Image() noexcept
 {
@@ -198,11 +199,11 @@ auto arline::Image::makeResident() noexcept -> v0
 arline::Texture2D::Texture2D(std::filesystem::path const& path) noexcept
 {
     auto width{ i32{} }, height{ i32{} }, channels{ i32{} };
-    auto data{ stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha) };
+    auto data{ stbi_load(path.string().c_str(), &width, &height, &channels, STBI_rgb_alpha) };
 
     if (!data)
     {
-        VkContext::Get()->errorCallback("Failed to load texture: " + std::string{path});
+        VkContext::Get()->errorCallback(std::format("Failed to load texture: {}", path.string()));
         return;
     }
 
