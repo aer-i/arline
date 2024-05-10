@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 
 project(arline)
-option(ARLINE_BUILD_EXAMPLES "Build examples" ON)
+option(ARLINE_BUILD_EXAMPLES "Build examples" OFF)
 
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
