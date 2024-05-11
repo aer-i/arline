@@ -3,7 +3,7 @@
 
 namespace arline {
 
-    inline auto Commands::begin() const noexcept -> v0
+    inline auto Commands::begin() noexcept -> v0
     {
         VkContext::AcquireNextImage();
 
@@ -19,13 +19,13 @@ namespace arline {
         vkBeginCommandBuffer(m.cmd, &beginInfo);
     }
 
-    inline auto Commands::end() const noexcept -> v0
+    inline auto Commands::end() noexcept -> v0
     {
         vkEndCommandBuffer(m.cmd);
         VkContext::PresentFrame();
     }
 
-    inline auto Commands::beginPresent() const noexcept -> v0
+    inline auto Commands::beginPresent(RenderPass renderPass) const noexcept -> v0
     {
         auto imageBarrier{ VkImageMemoryBarrier2{
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -49,7 +49,8 @@ namespace arline {
             imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
             m.ctx->swapchainImages[m.ctx->imageIndex].layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        } else
+        }
+        else
         {
             imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
             imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -70,8 +71,16 @@ namespace arline {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .imageView = m.ctx->swapchainImages[m.ctx->imageIndex].view,
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE
+            .loadOp = static_cast<VkAttachmentLoadOp>(renderPass.loadOp),
+            .storeOp = static_cast<VkAttachmentStoreOp>(renderPass.storeOp),
+            .clearValue = {
+                .color = VkClearColorValue{
+                    static_cast<f32>(renderPass.color.r) / 255.f,
+                    static_cast<f32>(renderPass.color.g) / 255.f,
+                    static_cast<f32>(renderPass.color.b) / 255.f,
+                    static_cast<f32>(renderPass.color.a) / 255.f
+                }
+            }
         }};
 
         auto const renderingInfo{ VkRenderingInfo{

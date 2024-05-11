@@ -5,6 +5,7 @@
 auto arline::ImGuiContext::Create() noexcept -> v0
 {
     ImGui::CreateContext();
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     ImGui_ImplGlfw_InitForVulkan(Window::GetHandle(), true);
 
     auto fontData{ static_cast<u8*>(nullptr) };
@@ -29,6 +30,7 @@ auto arline::ImGuiContext::NewFrame() noexcept -> v0
 {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
+    ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 }
 
 auto arline::ImGuiContext::EndFrame() noexcept -> v0

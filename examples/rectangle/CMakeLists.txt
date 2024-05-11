@@ -1,5 +1,5 @@
-add_executable(1-Triangle example.cpp)
-target_link_libraries(1-Triangle PUBLIC arline)
+add_executable(Rectangle example.cpp)
+target_link_libraries(Rectangle PUBLIC arline)
 
 #compile shader to bin directory-------------------------------------
 
@@ -34,8 +34,8 @@ foreach(GLSL ${GLSL_SOURCE_FILES})
 endforeach(GLSL)
 
 add_custom_target(
-    Shaders1
+    ShadersRectangle
     DEPENDS ${SPIRV_BINARY_FILES}
 )
 
-add_dependencies(1-Triangle Shaders1)
+add_dependencies(Rectangle ShadersRectangle)

@@ -22,7 +22,7 @@ namespace arline
     auto InitEngine(Args&&... args)
     {
         {
-            WindowInfo windowInfo{[&]
+            WindowInfo windowInfo{ [&]
             {
                 if constexpr (requires {{ engine_t::WindowInfo() } -> std::same_as<WindowInfo>; })
                 {
@@ -40,7 +40,7 @@ namespace arline
                 }
             }()};
 
-            ContextInfo contextInfo{[&]
+            ContextInfo contextInfo{ [&]
             {
                 if constexpr (requires {{ engine_t::ContextInfo() } -> std::same_as<ContextInfo>; })
                 {
@@ -61,7 +61,7 @@ namespace arline
             ImGuiContext::Create();
         }
         {
-            auto commands{ Commands{}};
+            auto commands{ Commands{} };
             auto prevWidth{ Window::GetFramebufferWidth() };
             auto prevHeight{ Window::GetFramebufferHeight() };
 

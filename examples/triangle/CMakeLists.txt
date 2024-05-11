@@ -1,5 +1,5 @@
-add_executable(2-indexBuffer example.cpp)
-target_link_libraries(2-indexBuffer PUBLIC arline)
+add_executable(Triangle example.cpp)
+target_link_libraries(Triangle PUBLIC arline)
 
 #compile shader to bin directory-------------------------------------
 
@@ -34,8 +34,8 @@ foreach(GLSL ${GLSL_SOURCE_FILES})
 endforeach(GLSL)
 
 add_custom_target(
-    Shaders2
+    ShadersTriangle
     DEPENDS ${SPIRV_BINARY_FILES}
 )
 
-add_dependencies(2-indexBuffer Shaders2)
+add_dependencies(Triangle ShadersTriangle)
