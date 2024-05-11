@@ -91,18 +91,6 @@ auto arline::Window::Teardown() -> v0
     m.infoCallback("Terminated GLFW context");
 }
 
-auto arline::Window::SizeCallback([[maybe_unused]] GLFWwindow* pWindow, i32 width, i32 height) -> v0
-{
-    m.width = width;
-    m.height = height;
-}
-
-auto arline::Window::FramebufferSizeCallback([[maybe_unused]]GLFWwindow* pWindow, i32 width, i32 height) -> v0
-{
-    m.framebufferWidth = width;
-    m.framebufferHeight = height;
-}
-
 auto arline::Window::IsAvailable() noexcept -> b8
 {
     return !glfwWindowShouldClose(m.handle);
@@ -126,4 +114,16 @@ auto arline::Window::GetTitle() noexcept -> const c8*
 auto arline::Window::SetTitle(std::string_view title) noexcept -> v0
 {
     glfwSetWindowTitle(m.handle, title.data());
+}
+
+auto arline::Window::SizeCallback([[maybe_unused]] GLFWwindow* pWindow, i32 width, i32 height) -> v0
+{
+    m.width = width;
+    m.height = height;
+}
+
+auto arline::Window::FramebufferSizeCallback([[maybe_unused]]GLFWwindow* pWindow, i32 width, i32 height) -> v0
+{
+    m.framebufferWidth = width;
+    m.framebufferHeight = height;
 }

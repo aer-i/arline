@@ -15,12 +15,9 @@ namespace arline
         auto operator=(Commands const&) -> Commands& = default;
         auto operator=(Commands&&) -> Commands& = default;
 
-    private:
-        friend class Context;
-        auto begin() const noexcept -> v0;
-        auto end() const noexcept -> v0;
-
     public:
+        inline auto begin() const noexcept -> v0;
+        inline auto end() const noexcept -> v0;
         inline auto beginPresent() const noexcept -> v0;
         inline auto endPresent() const noexcept -> v0;
         inline auto setScissor(i32 x, i32 y, u32 width, u32 height) const noexcept -> v0;

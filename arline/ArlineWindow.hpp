@@ -29,23 +29,22 @@ namespace arline
         auto operator=(Window const&) -> Window& = delete;
         auto operator=(Window&&) -> Window& = delete;
 
-    private:
-        friend class Context;
+    public:
         static auto Create(
             WindowInfo const& info,
             v0 (*infoCallback)(std::string_view),
             v0 (*errorCallback)(std::string_view)
         ) -> v0;
         static auto Teardown() -> v0;
-        static auto SizeCallback(GLFWwindow* pWindow, i32 width, i32 height) -> v0;
-        static auto FramebufferSizeCallback(GLFWwindow* pWindow, i32 width, i32 height) -> v0;
-
-    public:
         static auto IsAvailable() noexcept -> b8;
         static auto PollEvents() noexcept -> v0;
         static auto WaitEvents() noexcept -> v0;
         static auto GetTitle() noexcept -> c8 const*;
         static auto SetTitle(std::string_view title) noexcept -> v0;
+
+    private:
+        static auto SizeCallback(GLFWwindow* pWindow, i32 width, i32 height) -> v0;
+        static auto FramebufferSizeCallback(GLFWwindow* pWindow, i32 width, i32 height) -> v0;
 
     public:
         static inline auto GetHandle() noexcept -> GLFWwindow* { return m.handle; }

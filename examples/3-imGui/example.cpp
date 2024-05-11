@@ -1,24 +1,18 @@
 #include <Arline.hpp>
-#include <format>
-#include <cmath>
-
-using namespace ar::types;
 
 struct Engine
 {
-    static consteval u32 UseImgui() { return 1; }
-
-    inline auto update() noexcept -> v0
+    void update()
     {
         ar::Window::PollEvents();
     }
 
-    inline auto renderGui() noexcept -> v0
+    void renderGui()
     {
         ImGui::ShowDemoWindow();
     }
 
-    inline auto recordCommands(ar::Commands const& commands) noexcept -> v0
+    void recordCommands(ar::Commands const& commands)
     {
         commands.beginPresent();
         commands.drawImGui();
@@ -26,20 +20,7 @@ struct Engine
     }
 };
 
-auto main() -> i32
+int main()
 {
-    ar::Context{
-        ar::WindowInfo{
-            .width = 1280,
-            .height = 720,
-            .minWidth = 400,
-            .minHeight = 300,
-            .title = "Example - ImGui"
-        },
-        ar::ContextInfo{
-            .infoCallback = [](std::string_view message) { std::printf("INFO: %s\n", message.data()); },
-            .errorCallback = [](std::string_view message) { std::printf("ERROR: %s\n", message.data()); exit(1); },
-            .enableValidationLayers = true
-        }
-    }.initEngine(Engine{});
+    ar::InitEngine<Engine>();
 }

@@ -27,13 +27,11 @@ namespace arline
         auto operator=(VkContext const&) -> VkContext& = delete;
         auto operator=(VkContext&&) -> VkContext& = delete;
 
-    private:
+    public:
         static auto Create(ContextInfo const& info) noexcept -> v0;
         static auto Teardown() noexcept -> v0;
         static auto WaitForDevice() noexcept -> v0;
         static auto RecreateSwapchain() noexcept -> v0;
-
-    public:
         static auto AcquireNextImage() noexcept -> v0;
         static auto PresentFrame() noexcept -> v0;
         static auto TransferSubmit(std::function<v0(VkCommandBuffer)>&& function) noexcept -> v0;
@@ -62,7 +60,6 @@ namespace arline
         static auto CreateTransferResources() noexcept -> v0;
 
     private:
-        friend class Context;
         friend class Commands;
         static inline struct Members
         {

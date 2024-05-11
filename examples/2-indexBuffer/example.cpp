@@ -1,13 +1,10 @@
 #include <Arline.hpp>
-#include <format>
 #include <cmath>
 
 using namespace ar::types;
 
 struct Engine
 {
-    static consteval u32 UseImgui() { return 0; }
-
     ar::StaticBuffer vbo;
     ar::StaticBuffer ibo;
     ar::Pipeline pipeline;
@@ -35,7 +32,6 @@ struct Engine
         }};
     }
 
-    inline auto renderGui() -> v0 {}
     inline auto update() noexcept -> v0
     {
         ar::Window::PollEvents();
@@ -61,18 +57,5 @@ struct Engine
 
 auto main() -> i32
 {
-    ar::Context{
-        ar::WindowInfo{
-            .width = 1280,
-            .height = 720,
-            .minWidth = 400,
-            .minHeight = 300,
-            .title = "Example - Index Buffer"
-        },
-        ar::ContextInfo{
-            .infoCallback = [](std::string_view message) { std::printf("INFO: %s\n", message.data()); },
-            .errorCallback = [](std::string_view message) { std::printf("ERROR: %s\n", message.data()); exit(1); },
-            .enableValidationLayers = true
-        }
-    }.initEngine(Engine{});
+    ar::InitEngine<Engine>();
 }

@@ -15,34 +15,57 @@ namespace arline
     concept Engine = requires(T t)
     {
         { t.update() } -> std::same_as<v0>;
-        { t.renderGui() } -> std::same_as<v0>;
         { t.recordCommands(Commands{}) } -> std::same_as<v0>;
-        { T::UseImgui() } -> std::same_as<u32>;
     };
 
-    class Context
+    template<Engine engine_t, typename... Args>
+    auto InitEngine(Args&&... args)
     {
-    public:
-        Context(WindowInfo const& windowInfo, ContextInfo const& contextInfo = {}) noexcept
         {
+            WindowInfo windowInfo{[&]
+            {
+                if constexpr (requires {{ engine_t::WindowInfo() } -> std::same_as<WindowInfo>; })
+                {
+                    return engine_t::WindowInfo();
+                }
+                else
+                {
+                    return WindowInfo{
+                        .width = 1280,
+                        .height = 720,
+                        .minWidth = 400,
+                        .minHeight = 300,
+                        .title = "Arline application"
+                    };
+                }
+            }()};
+
+            ContextInfo contextInfo{[&]
+            {
+                if constexpr (requires {{ engine_t::ContextInfo() } -> std::same_as<ContextInfo>; })
+                {
+                    return engine_t::ContextInfo();
+                }
+                else
+                {
+                    return ContextInfo{
+                        .infoCallback = [](std::string_view){},
+                        .errorCallback = [](std::string_view){},
+                        .enableValidationLayers = false
+                    };
+                }
+            }()};
+
             Window::Create(windowInfo, contextInfo.infoCallback, contextInfo.errorCallback);
             VkContext::Create(contextInfo);
             ImGuiContext::Create();
         }
-
-        ~Context() noexcept
         {
-            m.commands.m = {};
-
-            ImGuiContext::Teardown();
-            VkContext::Teardown();
-            Window::Teardown();
-        }
-
-        inline auto initEngine(Engine auto&& engine) const noexcept -> v0
-        {
+            auto commands{ Commands{}};
             auto prevWidth{ Window::GetFramebufferWidth() };
             auto prevHeight{ Window::GetFramebufferHeight() };
+
+            engine_t engine(args...);
 
             while (Window::IsAvailable()) [[likely]]
             {
@@ -50,51 +73,45 @@ namespace arline
 
                 if (prevHeight != Window::GetFramebufferHeight() || prevWidth != Window::GetFramebufferWidth()) [[unlikely]]
                 {
-                    prevWidth  = Window::GetFramebufferWidth();
+                    prevWidth = Window::GetFramebufferWidth();
                     prevHeight = Window::GetFramebufferHeight();
 
                     while (!prevHeight || !prevWidth)
                     {
                         Window::WaitEvents();
-                        prevWidth  = Window::GetFramebufferWidth();
+                        prevWidth = Window::GetFramebufferWidth();
                         prevHeight = Window::GetFramebufferHeight();
 
                         if (!Window::IsAvailable())
                         {
-                            goto exit;
+                            goto exitLoop;
                         }
                     }
 
                     VkContext::RecreateSwapchain();
                 }
 
-                if constexpr (engine.UseImgui())
+                //            requires { engine.renderGui(); }) is not working for some reason
+                if constexpr (requires {{engine_t(args...).renderGui() } -> std::same_as<v0>; })
                 {
                     ImGuiContext::NewFrame();
                     engine.renderGui();
                     ImGuiContext::EndFrame();
                 }
 
-                m.commands.begin();
-                engine.recordCommands(m.commands);
-                m.commands.end();
+                commands.begin();
+                engine.recordCommands(commands);
+                commands.end();
             }
-
-            exit:
+            exitLoop:
             VkContext::WaitForDevice();
         }
-
-        Context(Context const&) = delete;
-        Context(Context&&) = delete;
-        auto operator=(Context const&) = delete;
-        auto operator=(Context&&) = delete;
-
-    private:
-        struct Members
         {
-            Commands commands;
-        } m;
-    };
+            ImGuiContext::Teardown();
+            VkContext::Teardown();
+            Window::Teardown();
+        }
+    }
 }
 
 namespace ar = arline;

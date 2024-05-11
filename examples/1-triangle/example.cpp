@@ -1,45 +1,34 @@
 #include <Arline.hpp>
-#include <format>
 #include <cmath>
 
 using namespace ar::types;
 
+struct{ f32 x, y, z; }
+static constexpr vertices[] = {
+    { 0.5f, 0.5f, 0.0f },
+    { -.5f, 0.5f, 0.0f },
+    { 0.0f, -.5f, 0.0f }
+};
+
 struct Engine
 {
-    static consteval u32 UseImgui() { return 0; }
+    ar::StaticBuffer vbo = ar::StaticBuffer{ vertices, sizeof(vertices) };
+    ar::Pipeline pipeline = ar::GraphicsPipeline{{
+        .shaders = {
+            ar::Shader{"shaders/main.vert.spv"},
+            ar::Shader{"shaders/main.frag.spv"}
+        }
+    }};
 
-    ar::StaticBuffer vbo;
-    ar::Pipeline pipeline;
-
-    inline Engine() noexcept
-    {
-        struct{ f32 x, y, z; }
-        vertices[] = {
-            { 0.5f, 0.5f, 0.0f },
-            { -.5f, 0.5f, 0.0f },
-            { 0.0f, -.5f, 0.0f }
-        };
-
-        vbo = ar::StaticBuffer{ vertices, sizeof(vertices) };
-
-        pipeline = ar::GraphicsPipeline{{
-            .shaders = {
-                ar::Shader{"shaders/main.vert.spv"},
-                ar::Shader{"shaders/main.frag.spv"}
-            }
-        }};
-    }
-
-    inline auto renderGui() -> v0 {}
-    inline auto update() noexcept -> v0
+    inline void update() noexcept
     {
         ar::Window::PollEvents();
     }
 
-    inline auto recordCommands(ar::Commands const& commands) noexcept -> v0
+    inline void recordCommands(ar::Commands const& commands) noexcept
     {
         struct{ u64 vbo; f32 color[3]; }
-        pushConstant {
+        const pushConstant {
             .vbo = *vbo.getAddress(),
             .color = {
                 static_cast<f32>(std::sin(ar::time::get() * 1.0)) * 0.5f + 0.5f,
@@ -58,20 +47,7 @@ struct Engine
     }
 };
 
-auto main() -> i32
+int main()
 {
-    ar::Context{
-        ar::WindowInfo{
-            .width = 1280,
-            .height = 720,
-            .minWidth = 400,
-            .minHeight = 300,
-            .title = "Example - Triangle"
-        },
-        ar::ContextInfo{
-            .infoCallback = [](std::string_view message) { std::printf("INFO: %s\n", message.data()); },
-            .errorCallback = [](std::string_view message) { std::printf("ERROR: %s\n", message.data()); exit(1); },
-            .enableValidationLayers = true
-        }
-    }.initEngine(Engine{});
+    ar::InitEngine<Engine>();
 }
