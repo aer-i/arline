@@ -36,6 +36,7 @@ namespace arline
         static auto PresentFrame() noexcept -> v0;
         static auto TransferSubmit(std::function<v0(VkCommandBuffer)>&& function) noexcept -> v0;
         static auto CreateShaderModule(v0 const* pData, u64 size) noexcept -> VkShaderModule;
+        static auto CreatePipeline(VkComputePipelineCreateInfo const* pInfo) noexcept -> VkPipeline;
         static auto CreatePipeline(VkGraphicsPipelineCreateInfo const* pInfo) noexcept -> VkPipeline;
         static auto CreateStagingBuffer(v0 const* pData, u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>;
         static auto CreateStaticBuffer(u32 size) noexcept -> std::tuple<VkBuffer, VmaAllocation>;
@@ -60,7 +61,9 @@ namespace arline
         static auto CreateTransferResources() noexcept -> v0;
 
     private:
+        friend class ComputeCommands;
         friend class Commands;
+
         static inline struct Members
         {
             static constexpr u32 framesInFlight = 2;
@@ -74,6 +77,8 @@ namespace arline
 
             struct Frame
             {
+                VkCommandPool computeCommandPool;
+                VkCommandBuffer computeCommandBuffer;
                 VkCommandPool commandPool;
                 VkCommandBuffer commandBuffer;
                 VkSemaphore acquireSemaphore;
@@ -100,6 +105,7 @@ namespace arline
             VkExtent2D swapchainExtent;
             VkSwapchainKHR swapchain;
             VkPipelineLayout pipelineLayout;
+            VkPipelineLayout computePipelineLayout;
             VkDescriptorSet descriptorSet;
             VkSampler sampler;
             VkFence transferFence;

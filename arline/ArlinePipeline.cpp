@@ -1,33 +1,21 @@
 #include "ArlinePipeline.hpp"
 
 arline::Pipeline::Pipeline() noexcept
-    : p{}
+    : m{}
 {}
 
-arline::Pipeline::~Pipeline() noexcept
+arline::Pipeline::Pipeline(Shader const& computeShader) noexcept
 {
-    if (p.handle)
-    {
-        vkDestroyPipeline(VkContext::Get()->device, p.handle, nullptr);
-    }
+    VkComputePipelineCreateInfo info{
+        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .stage = computeShader,
+        .layout = VkContext::Get()->computePipelineLayout
+    };
+
+    m.handle = VkContext::CreatePipeline(&info);
 }
 
-arline::Pipeline::Pipeline(Pipeline&& other) noexcept
-    : p{ other.p }
-{
-    other.p = {};
-}
-
-auto arline::Pipeline::operator=(Pipeline&& other) noexcept -> Pipeline&
-{
-    this->~Pipeline();
-    this->p = other.p;
-    other.p = {};
-
-    return *this;
-}
-
-arline::GraphicsPipeline::GraphicsPipeline(Config&& config) noexcept
+arline::Pipeline::Pipeline(GraphicsConfig&& config) noexcept
 {
     auto shaders{ std::vector<VkPipelineShaderStageCreateInfo>{} };
     shaders.reserve(config.shaders.size());
@@ -70,7 +58,7 @@ arline::GraphicsPipeline::GraphicsPipeline(Config&& config) noexcept
     }};
 
     auto const blendAttachmentState{ VkPipelineColorBlendAttachmentState{
-        .blendEnable = static_cast<b8>(config.flags & FlagBits::eColorBlending),
+        .blendEnable = static_cast<b8>(config.flags & GraphicsFlagBits::eColorBlending),
         .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
         .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
@@ -86,8 +74,8 @@ arline::GraphicsPipeline::GraphicsPipeline(Config&& config) noexcept
 
     auto const depthStencilStateCreateInfo{ VkPipelineDepthStencilStateCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = static_cast<b8>(config.flags & FlagBits::eDepthTest),
-        .depthWriteEnable = static_cast<b8>(config.flags & FlagBits::eDepthWrite),
+        .depthTestEnable = static_cast<b8>(config.flags & GraphicsFlagBits::eDepthTest),
+        .depthWriteEnable = static_cast<b8>(config.flags & GraphicsFlagBits::eDepthWrite),
         .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
         .stencilTestEnable = false
     }};
@@ -120,5 +108,28 @@ arline::GraphicsPipeline::GraphicsPipeline(Config&& config) noexcept
         .layout = VkContext::Get()->pipelineLayout
     }};
 
-    p.handle = VkContext::CreatePipeline(&pipelineCreateInfo);
+    m.handle = VkContext::CreatePipeline(&pipelineCreateInfo);
+}
+
+arline::Pipeline::~Pipeline() noexcept
+{
+    if (m.handle)
+    {
+        vkDestroyPipeline(VkContext::Get()->device, m.handle, nullptr);
+    }
+}
+
+arline::Pipeline::Pipeline(Pipeline&& other) noexcept
+    : m{ other.m }
+{
+    other.m = {};
+}
+
+auto arline::Pipeline::operator=(Pipeline&& other) noexcept -> Pipeline&
+{
+    this->~Pipeline();
+    this->m = other.m;
+    other.m = {};
+
+    return *this;
 }

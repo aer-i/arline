@@ -179,17 +179,18 @@ auto arline::Image::makeResident() noexcept -> v0
     p.index = ++VkContext::Get()->currentTextureIndex;
 
     auto const imageInfo{ VkDescriptorImageInfo{
+        .sampler = VkContext::Get()->sampler,
         .imageView = p.view,
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     }};
 
     auto const write{ VkWriteDescriptorSet{
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = VkContext::Get()->descriptorSet,
-        .dstBinding = 1,
+        .dstBinding = 0,
         .dstArrayElement = p.index,
         .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .pImageInfo = &imageInfo
     }};
 

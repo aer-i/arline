@@ -3,15 +3,66 @@
 
 namespace arline {
 
+    inline auto ComputeCommands::begin() noexcept -> v0
+    {
+        m.cmd = m.ctx->frames[m.ctx->frameIndex].computeCommandBuffer;
+
+        vkResetCommandPool(m.ctx->device, m.ctx->frames[m.ctx->frameIndex].computeCommandPool, 0);
+
+        auto const beginInfo{ VkCommandBufferBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+        }};
+
+        vkBeginCommandBuffer(m.cmd, &beginInfo);
+    }
+
+    inline auto ComputeCommands::end() noexcept -> v0
+    {
+        vkEndCommandBuffer(m.cmd);
+    }
+
+    inline auto ComputeCommands::bindPipeline(Pipeline const& pipeline) const noexcept -> v0
+    {
+        vkCmdBindPipeline(m.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    }
+
+    inline auto ComputeCommands::pushConstant(auto const* pData) const noexcept -> v0
+    {
+        static_assert(sizeof(*pData) <= 128);
+        static constexpr auto stage{ VK_SHADER_STAGE_COMPUTE_BIT };
+
+        vkCmdPushConstants(
+            m.cmd,
+            VkContext::Get()->computePipelineLayout,
+            stage,
+            0,
+            sizeof(*pData),
+            pData
+        );
+    }
+
+    inline auto ComputeCommands::pushConstant(v0 const* pData, u32 dataSize) const noexcept -> v0
+    {
+        static constexpr auto stage{ VK_SHADER_STAGE_COMPUTE_BIT };
+
+        vkCmdPushConstants(
+            m.cmd,
+            VkContext::Get()->computePipelineLayout,
+            stage,
+            0,
+            dataSize,
+            pData
+        );
+    }
+
     inline auto Commands::begin() noexcept -> v0
     {
-        VkContext::AcquireNextImage();
-
         m.cmd = m.ctx->frames[m.ctx->frameIndex].commandBuffer;
 
         vkResetCommandPool(m.ctx->device, m.ctx->frames[m.ctx->frameIndex].commandPool, 0);
 
-        auto const beginInfo{VkCommandBufferBeginInfo{
+        auto const beginInfo{ VkCommandBufferBeginInfo{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
         }};
@@ -22,7 +73,6 @@ namespace arline {
     inline auto Commands::end() noexcept -> v0
     {
         vkEndCommandBuffer(m.cmd);
-        VkContext::PresentFrame();
     }
 
     inline auto Commands::beginPresent(RenderPass renderPass) const noexcept -> v0

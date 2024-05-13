@@ -14,7 +14,7 @@ struct Engine
 {
     ar::StaticBuffer vbo = ar::StaticBuffer{ vertices, sizeof(vertices) };
     ar::StaticBuffer ibo = ar::StaticBuffer{ indices, sizeof(indices) };
-    ar::Pipeline pipeline = ar::GraphicsPipeline{{
+    ar::Pipeline pipeline = ar::Pipeline{{
         .shaders = {
             ar::Shader{"shaders/main.vert.spv"},
             ar::Shader{"shaders/main.frag.spv"}

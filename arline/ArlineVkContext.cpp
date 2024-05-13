@@ -73,6 +73,7 @@ auto arline::VkContext::Teardown() noexcept -> v0
         vkDestroySemaphore(m.device, frame.renderSemaphore, nullptr);
         vkDestroySemaphore(m.device, frame.acquireSemaphore, nullptr);
         vkDestroyCommandPool(m.device, frame.commandPool, nullptr);
+        vkDestroyCommandPool(m.device, frame.computeCommandPool, nullptr);
     }
 
     for (auto& image : m.swapchainImages)
@@ -82,6 +83,7 @@ auto arline::VkContext::Teardown() noexcept -> v0
 
     vkDestroyCommandPool(m.device, m.transferCommandPool, nullptr);
     vkDestroyFence(m.device, m.transferFence, nullptr);
+    vkDestroyPipelineLayout(m.device, m.computePipelineLayout, nullptr);
     vkDestroyPipelineLayout(m.device, m.pipelineLayout, nullptr);
     vkDestroyDescriptorSetLayout(m.device, m.setLayout, nullptr);
     vkDestroyDescriptorPool(m.device, m.descriptorPool, nullptr);
@@ -224,11 +226,22 @@ auto arline::VkContext::CreateShaderModule(v0 const* pData, u64 size) noexcept -
     return shaderModule;
 }
 
+auto arline::VkContext::CreatePipeline(VkComputePipelineCreateInfo const* pInfo) noexcept -> VkPipeline
+{
+    VkPipeline pipeline;
+
+    vkErrorCheck<"Failed to create compute VkPipeline">(
+        vkCreateComputePipelines(m.device, nullptr, 1, pInfo, nullptr, &pipeline)
+    );
+
+    return pipeline;
+}
+
 auto arline::VkContext::CreatePipeline(VkGraphicsPipelineCreateInfo const* pInfo) noexcept -> VkPipeline
 {
     VkPipeline pipeline;
 
-    vkErrorCheck<"Failed to create VkPipeline">(
+    vkErrorCheck<"Failed to create graphics VkPipeline">(
         vkCreateGraphicsPipelines(m.device, nullptr, 1, pInfo, nullptr, &pipeline)
     );
 
@@ -854,10 +867,20 @@ auto arline::VkContext::CreateCommandBuffers() noexcept -> v0
         .queueFamilyIndex = m.graphicsFamily
     }};
 
+    auto const computeCommandPoolCreateInfo{ VkCommandPoolCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = m.graphicsFamily // TODO: Use compute queue
+    }};
+
     for (auto& frame : m.frames)
     {
         vkErrorCheck<"Failed to create VkCommandPool">(
             vkCreateCommandPool(m.device, &commandPoolCreateInfo, nullptr, &frame.commandPool)
+        );
+
+        vkErrorCheck<"Failed to create VkCommandPool">(
+            vkCreateCommandPool(m.device, &computeCommandPoolCreateInfo, nullptr, &frame.computeCommandPool)
         );
 
         auto const commandBufferAllocateInfo{ VkCommandBufferAllocateInfo{
@@ -867,8 +890,19 @@ auto arline::VkContext::CreateCommandBuffers() noexcept -> v0
             .commandBufferCount = 1
         }};
 
+        auto const computeCommandBufferAllocateInfo{ VkCommandBufferAllocateInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = frame.computeCommandPool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1
+        }};
+
         vkErrorCheck<"Failed to allocate VkCommandBuffer">(
             vkAllocateCommandBuffers(m.device, &commandBufferAllocateInfo, &frame.commandBuffer)
+        );
+
+        vkErrorCheck<"Failed to allocate VkCommandBuffer">(
+            vkAllocateCommandBuffers(m.device, &computeCommandBufferAllocateInfo, &frame.computeCommandBuffer)
         );
     }
 }
@@ -922,8 +956,8 @@ auto arline::VkContext::CreateSamplers() noexcept -> v0
 auto arline::VkContext::CreateDescriptor() noexcept -> v0
 {
     auto const poolSizes{ std::array{
-        VkDescriptorPoolSize{ .type = VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount = 1 },
-        VkDescriptorPoolSize{ .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = 1024 },
+        VkDescriptorPoolSize{ .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 256'000 },
+        // TODO: //VkDescriptorPoolSize{ .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 256'000 }
     }};
 
     auto const descriptorPoolCreateInfo{ VkDescriptorPoolCreateInfo{
@@ -938,39 +972,29 @@ auto arline::VkContext::CreateDescriptor() noexcept -> v0
         vkCreateDescriptorPool(m.device, &descriptorPoolCreateInfo, nullptr, &m.descriptorPool)
     );
 
-    auto const layoutBindings{ std::array{
-        VkDescriptorSetLayoutBinding{
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .pImmutableSamplers = &m.sampler
-        },
-        VkDescriptorSetLayoutBinding{
-            .binding = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-            .descriptorCount = 1024,
-            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-        }
+    auto const layoutBinding{ VkDescriptorSetLayoutBinding{
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 256'000,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
     }};
 
-    auto const descriptorBindingFlags{ std::array{
-        VkDescriptorBindingFlags{},
-        VkDescriptorBindingFlags{ VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT }
+    auto const descriptorBindingFlags{ VkDescriptorBindingFlags{
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
     }};
 
     auto const setLayoutBindingFlags{ VkDescriptorSetLayoutBindingFlagsCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-        .bindingCount = static_cast<u32>(descriptorBindingFlags.size()),
-        .pBindingFlags = descriptorBindingFlags.data()
+        .bindingCount = 1,
+        .pBindingFlags = &descriptorBindingFlags
     }};
 
     auto const setLayoutCreateInfo{ VkDescriptorSetLayoutCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .pNext = &setLayoutBindingFlags,
         .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
-        .bindingCount = static_cast<u32>(layoutBindings.size()),
-        .pBindings = layoutBindings.data()
+        .bindingCount = 1,
+        .pBindings = &layoutBinding
     }};
 
     vkErrorCheck<"Failed to create VkDescriptorSetLayout">(
@@ -996,6 +1020,11 @@ auto arline::VkContext::CreatePipelineLayout() noexcept -> v0
         .size = 128
     }};
 
+    auto const computePushConstantRange{ VkPushConstantRange{
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        .size = 128
+    }};
+
     auto const pipelineLayoutCreateInfo{ VkPipelineLayoutCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
@@ -1004,8 +1033,20 @@ auto arline::VkContext::CreatePipelineLayout() noexcept -> v0
         .pPushConstantRanges = &pushConstantRange,
     }};
 
+    auto const computePipelineLayoutCreateInfo{ VkPipelineLayoutCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &m.setLayout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &computePushConstantRange,
+    }};
+
     vkErrorCheck<"Failed to create VkPipelineLayout">(
         vkCreatePipelineLayout(m.device, &pipelineLayoutCreateInfo, nullptr, &m.pipelineLayout)
+    );
+
+    vkErrorCheck<"Failed to create VkPipelineLayout">(
+        vkCreatePipelineLayout(m.device, &computePipelineLayoutCreateInfo, nullptr, &m.computePipelineLayout)
     );
 }
 

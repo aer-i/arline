@@ -99,9 +99,11 @@ namespace arline
                     ImGuiContext::EndFrame();
                 }
 
+                VkContext::AcquireNextImage();
                 commands.begin();
                 engine.recordCommands(commands);
                 commands.end();
+                VkContext::PresentFrame();
             }
             exitLoop:
             VkContext::WaitForDevice();

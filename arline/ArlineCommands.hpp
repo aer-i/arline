@@ -30,6 +30,30 @@ namespace arline
         StoreOp storeOp;
     };
 
+    class ComputeCommands
+    {
+    public:
+        ComputeCommands() = default;
+        ~ComputeCommands() = default;
+        ComputeCommands(ComputeCommands const&) = default;
+        ComputeCommands(ComputeCommands&&) = default;
+        auto operator=(ComputeCommands const&) -> ComputeCommands& = default;
+        auto operator=(ComputeCommands&&) -> ComputeCommands& = default;
+
+    private:
+        inline auto begin() noexcept -> v0;
+        inline auto end() noexcept -> v0;
+        inline auto bindPipeline(Pipeline const& pipeline) const noexcept -> v0;
+        inline auto pushConstant(auto const* pData) const noexcept -> v0;
+        inline auto pushConstant(v0 const* pData, u32 dataSize) const noexcept -> v0;
+    private:
+        struct Members
+        {
+            mutable VkContext::Members* ctx = VkContext::Get();
+            mutable VkCommandBuffer cmd = VkCommandBuffer{ };
+        } m;
+    };
+
     class Commands
     {
     public:
