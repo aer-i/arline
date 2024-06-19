@@ -255,15 +255,13 @@ namespace arline
 
     public:
         auto getAddress() noexcept -> u64_t;
-        auto write(void const* pData) noexcept -> void;
-        auto write(void const* pData, size_t size, size_t offset = 0ull) noexcept -> void;
+        auto write(void const* pData, size_t size = 0ull, size_t offset = 0ull) noexcept -> void;
 
     private:
         struct Members
         {
             void* pHandle;
             void* pAllocation;
-            u8_t* pMapped;
             size_t capacity;
         } m;
     };

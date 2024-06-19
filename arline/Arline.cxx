@@ -1,5 +1,7 @@
 #include "Arline.hxx"
 
+#define VMA_IMPLEMENTATION
+
 #ifdef _WIN32
 #   define VK_USE_PLATFORM_WIN32_KHR
 #   include <dwmapi.h>
@@ -7,6 +9,10 @@
 #endif
 
 #include <vulkan/vulkan.h>
+
+#pragma warning(push, 0)
+#include "vma.hxx"
+#pragma warning(pop)
 
 using namespace arline::types;
 
@@ -17,9 +23,6 @@ static constexpr auto g_minImageCount{ static_cast<T>(3u) };
 
 template<class T>
 static constexpr auto g_maxImageCount{ g_minImageCount<T> * static_cast<T>(2) }; 
-
-template<class T>
-static constexpr auto g_memoryBlockSize{ static_cast<T>(1024 * 1024 * 256) };
 
 struct ArlineContext
 {
@@ -53,6 +56,7 @@ struct ArlineContext
     VkSurfaceFormatKHR surfaceFormat;
     VkExtent2D surfaceExtent;
     VkPipelineLayout pipelineLayout;
+    VmaAllocator allocator;
 
     u32_t imageCount;
     u32_t unifiedPresent;
@@ -101,13 +105,13 @@ struct ArlineKeyboard
 };
 
 #ifdef AR_ENABLE_INFO_CALLBACK
-static callback_t      g_infoCallback;
+static callback_t     g_infoCallback;
 #endif
-static callback_t      g_errorCallback;
-static ArlineContext   g_ctx;
-static ArlineWindow    g_wnd;
-static ArlineTimer     g_timer;
-static ArlineKeyboard  g_keyboard;
+static callback_t     g_errorCallback;
+static ArlineContext  g_ctx;
+static ArlineWindow   g_wnd;
+static ArlineTimer    g_timer;
+static ArlineKeyboard g_keyboard;
 
 #ifdef AR_ENABLE_INFO_CALLBACK
 #define AR_INFO_CALLBACK(f, ...) \
@@ -346,7 +350,7 @@ static auto arWindow::create(ar::EngineConfig const& config) noexcept -> void
         .lpszClassName = L"ar",
     }};
 
-    if (!::RegisterClassExW(&wc))
+    if (!::SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) || !::RegisterClassExW(&wc))
     {
         g_errorCallback(error);
     }
@@ -947,83 +951,18 @@ arline::Buffer::Buffer(size_t capacity) noexcept
         .usage = usage
     }};
 
-    arContext::resultCheck(vkCreateBuffer(
-        g_ctx.device,
+    auto const allocationCI{ VmaAllocationCreateInfo{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
+    }};
+
+    arContext::resultCheck(vmaCreateBuffer(
+        g_ctx.allocator,
         &bufferCI,
-        nullptr,
-        reinterpret_cast<VkBuffer*>(&m.pHandle)
-    ));
-
-    auto findType{ [](u32_t typeFilter, VkMemoryPropertyFlags required) -> u32_t
-    {
-        VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(g_ctx.physicalDevice, &memProperties);
-
-        for (auto i{ u32_t{} }; i < memProperties.memoryTypeCount; ++i)
-        {
-            const auto isRequiredMemoryType{ static_cast<b8_t>(typeFilter & static_cast<u32_t>(1 << i)) };
-            const auto hasRequiredProperties{ (memProperties.memoryTypes[i].propertyFlags & required) == required };
-
-            if (isRequiredMemoryType && hasRequiredProperties)
-                return i;
-        }
-
-        return ~0u;
-    }};
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(
-        g_ctx.device,
-        static_cast<VkBuffer>(m.pHandle),
-        &memRequirements
-    );
-
-    auto memoryType{ findType(
-        memRequirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-    )};
-
-    if (memoryType == ~0u)
-    {
-        memoryType = findType(
-            memRequirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-        );
-    }
-
-    auto const memoryAFI{ VkMemoryAllocateFlagsInfo{
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
-        .flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
-    }};
-
-    auto const memoryAI{ VkMemoryAllocateInfo{
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext = &memoryAFI,
-        .allocationSize = memRequirements.size,
-        .memoryTypeIndex = memoryType,
-    }};
-
-    arContext::resultCheck(vkAllocateMemory(
-        g_ctx.device,
-        &memoryAI,
-        nullptr,
-        reinterpret_cast<VkDeviceMemory*>(&m.pAllocation)
-    ));
-
-    arContext::resultCheck(vkBindBufferMemory(
-        g_ctx.device,
-        static_cast<VkBuffer>(m.pHandle),
-        static_cast<VkDeviceMemory>(m.pAllocation),
-        0ull
-    ));
-
-    arContext::resultCheck(vkMapMemory(
-        g_ctx.device,
-        static_cast<VkDeviceMemory>(m.pAllocation),
-        0ull,
-        m.capacity,
-        0u,
-        reinterpret_cast<void**>(&m.pMapped)
+        &allocationCI,
+        reinterpret_cast<VkBuffer*>(&m.pHandle),
+        reinterpret_cast<VmaAllocation*>(&m.pAllocation),
+        nullptr
     ));
 }
 
@@ -1037,9 +976,11 @@ arline::Buffer::~Buffer() noexcept
 {
     if (m.pHandle)
     {
-        vkUnmapMemory(g_ctx.device, static_cast<VkDeviceMemory>(m.pAllocation));
-        vkFreeMemory(g_ctx.device, static_cast<VkDeviceMemory>(m.pAllocation), nullptr);
-        vkDestroyBuffer(g_ctx.device, static_cast<VkBuffer>(m.pHandle), nullptr);
+        vmaDestroyBuffer(
+            g_ctx.allocator,
+            static_cast<VkBuffer>(m.pHandle),
+            static_cast<VmaAllocation>(m.pAllocation)
+        );
     }
 }
 
@@ -1061,14 +1002,15 @@ auto arline::Buffer::getAddress() noexcept -> u64_t
     return vkGetBufferDeviceAddress(g_ctx.device, &bufferDAI);
 }
 
-auto arline::Buffer::write(void const* pData) noexcept -> void
-{
-    memcpy(m.pMapped, pData, m.capacity);
-}
-
 auto arline::Buffer::write(void const* pData, size_t size, size_t offset) noexcept -> void
 {
-    memcpy(m.pMapped + offset, pData, size);
+    arContext::resultCheck(vmaCopyMemoryToAllocation(
+        g_ctx.allocator,
+        pData,
+        static_cast<VmaAllocation>(m.pAllocation),
+        offset,
+        size ? size : m.capacity
+    ));
 }
 
 #pragma endregion
@@ -1420,6 +1362,17 @@ static auto arContext::create() noexcept -> void
         vkGetDeviceQueue(g_ctx.device, g_ctx.presentFamily, presentQueueIndex, &g_ctx.presentQueue);
     }
     {
+        auto const allocatorCI{ VmaAllocatorCreateInfo{
+            .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT | VMA_ALLOCATOR_CREATE_EXTERNALLY_SYNCHRONIZED_BIT,
+            .physicalDevice = g_ctx.physicalDevice,
+            .device = g_ctx.device,
+            .instance = g_ctx.instance,
+            .vulkanApiVersion = VK_API_VERSION_1_3,
+        }};
+
+        arContext::resultCheck(vmaCreateAllocator(&allocatorCI, &g_ctx.allocator));
+    }
+    {
         createSwapchain();
     }
     {
@@ -1466,6 +1419,7 @@ static auto arContext::teardown() noexcept -> void
 
     teardownSwapchain();
 
+    vmaDestroyAllocator(g_ctx.allocator);
     vkDestroyPipelineLayout(g_ctx.device, g_ctx.pipelineLayout, nullptr);
     vkDestroyDevice(g_ctx.device, nullptr);
 

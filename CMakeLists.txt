@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.20)
 
 find_package(Vulkan REQUIRED)
 
-project(arline)
-option(AR_BUILD_EXAMPLES "Build arline examples" OFF)
-option(AR_ENABLE_INFO_CALLBACK "Enable info callback - should be disabled for release builds." OFF)
+project(arline CXX)
+option(AR_BUILD_EXAMPLES "Build arline examples")
+option(AR_ENABLE_INFO_CALLBACK "Enable info callback - should be disabled for release builds.")
 
 add_library(arline)
 target_compile_features(arline PRIVATE cxx_std_20)

@@ -37,7 +37,7 @@ public:
 
     void onCommandsRecord(ar::GraphicsCommands const& commands) final
     {
-        commands.beginPresent({ ar::LoadOp::eDontCare, ar::StoreOp::eDontCare });
+        commands.beginPresent({ ar::LoadOp::eClear, ar::StoreOp::eDontCare });
         {
             auto address{ vertexBuffer.getAddress() };
 
