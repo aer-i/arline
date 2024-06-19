@@ -1,44 +1,25 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.20)
+
+find_package(Vulkan REQUIRED)
 
 project(arline)
-option(ARLINE_BUILD_EXAMPLES "Build examples" OFF)
-
-set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/glfw)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/Vulkan-Headers)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/volk)
+option(AR_BUILD_EXAMPLES "Build arline examples" OFF)
+option(AR_ENABLE_INFO_CALLBACK "Enable info callback - should be disabled for release builds." OFF)
 
 add_library(arline)
-target_compile_features(arline PUBLIC cxx_std_20)
-target_sources(arline PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlineWindow.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlineVkContext.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlinePipeline.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlineShader.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlineBuffer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlineImage.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/arline/ArlineImgui.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui/imgui.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui/imgui_draw.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui/imgui_demo.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui/imgui_widgets.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui/imgui_tables.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui/backends/imgui_impl_glfw.cpp
+target_compile_features(arline PRIVATE cxx_std_20)
+target_sources(arline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/arline/Arline.cxx)
+target_include_directories(arline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/arline/)
+target_link_libraries(arline PRIVATE Vulkan::Vulkan)
+target_compile_options(arline PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
 
-target_include_directories(arline PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/arline/
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/VulkanMemoryAllocator/include/
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui/
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/stb/
-)
+if (AR_ENABLE_INFO_CALLBACK)
+    target_compile_definitions(arline PUBLIC AR_ENABLE_INFO_CALLBACK)
+endif()
 
-target_link_libraries(arline PUBLIC glfw Vulkan::Headers volk)
-
-if (ARLINE_BUILD_EXAMPLES)
+if (AR_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()

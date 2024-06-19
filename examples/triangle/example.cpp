@@ -1,53 +1,55 @@
-#include <Arline.hpp>
-#include <cmath>
+#include "shader.inl"
+#include <Arline.hxx>
 
 using namespace ar::types;
 
-struct{ f32 x, y, z; }
-static constexpr vertices[] = {
-    { 0.5f, 0.5f, 0.0f },
-    { -.5f, 0.5f, 0.0f },
-    { 0.0f, -.5f, 0.0f }
-};
-
-struct Engine
+class Engine : public ar::Engine
 {
-    ar::StaticBuffer vbo = ar::StaticBuffer{ vertices, sizeof(vertices) };
-    ar::Pipeline pipeline = ar::Pipeline{{
+public:
+    ar::Buffer vertexBuffer{ sizeof(f32_t) * 3 * 3 };
+    ar::Pipeline pipeline{ ar::GraphicsConfig{
         .shaders = {
-            ar::Shader{"shaders/main.vert.spv"},
-            ar::Shader{"shaders/main.frag.spv"}
+            ar::Shader{ shaders::vert, sizeof(shaders::vert), ar::ShaderStage::eVertex   },
+            ar::Shader{ shaders::frag, sizeof(shaders::frag), ar::ShaderStage::eFragment }
         }
     }};
 
-    inline void update() noexcept
+    Engine()
+    {
+        f32_t vertices[] = {
+            0.5f, 0.5f, 0.f,
+            -.5f, 0.5f, 0.f,
+            0.0f, -.5f, 0.f
+        };
+
+        vertexBuffer.write(vertices);
+    }
+
+    void onResourcesUpdate() final
+    {
+
+    }
+
+    void onUpdate() final
     {
         ar::Window::PollEvents();
     }
 
-    inline void recordCommands(ar::Commands const& commands) noexcept
+    void onCommandsRecord(ar::GraphicsCommands const& commands) final
     {
-        struct{ u64 vbo; f32 color[3]; }
-        const pushConstant {
-            .vbo = *vbo.getAddress(),
-            .color = {
-                static_cast<f32>(std::sin(ar::time::get() * 1.0)) * 0.5f + 0.5f,
-                static_cast<f32>(std::sin(ar::time::get() * 2.0)) * 0.5f + 0.5f,
-                static_cast<f32>(std::sin(ar::time::get() * 3.0)) * 0.5f + 0.5f
-            }
-        };
+        commands.beginPresent({ ar::LoadOp::eDontCare, ar::StoreOp::eDontCare });
+        {
+            auto address{ vertexBuffer.getAddress() };
 
-        commands.beginPresent();
-
-        commands.bindPipeline(pipeline);
-        commands.pushConstant(&pushConstant);
-        commands.draw(3);
-
+            commands.pushConstant(&address, sizeof(address));
+            commands.bindPipeline(pipeline);
+            commands.draw(3u);
+        }
         commands.endPresent();
     }
 };
 
 int main()
 {
-    ar::InitEngine<Engine>();
+    return Engine{}.execute();
 }
