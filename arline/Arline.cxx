@@ -55,8 +55,18 @@ struct ArlineContext
     VkCommandPool presentCommandPool;
     VkSurfaceFormatKHR surfaceFormat;
     VkExtent2D surfaceExtent;
+    VkDescriptorPool descriptorPool;
+    VkDescriptorSetLayout descriptorSetLayout;
+    VkDescriptorSet descriptorSet;
     VkPipelineLayout pipelineLayout;
+    VkSampler linearToEdgeSampler;
+    VkSampler linearRepeatSampler;
+    VkSampler nearestToEdgeSampler;
+    VkSampler nearestRepeatSampler;
+    VkCommandPool transferCommandPool;
+    VkCommandBuffer transferCommandBuffer;
     VmaAllocator allocator;
+    u32_t allocatedSampledImageCount;
 
     u32_t imageCount;
     u32_t unifiedPresent;
@@ -89,7 +99,7 @@ struct ArlineTimer
     LARGE_INTEGER timeOffset;
     LARGE_INTEGER frequency;
     f64_t previousTime;
-    f32_t deltaTime;
+    f64_t deltaTime;
 };
 
 struct ArlineKey
@@ -141,6 +151,8 @@ namespace arContext
     static auto createSwapchain() noexcept -> void;
     static auto teardownSwapchain() noexcept -> void;
     static auto resultCheck(VkResult result) noexcept -> void;
+    static auto beginTransfer() noexcept -> void;
+    static auto endTransfer() noexcept -> void;
     static auto createImageView(
         VkImage image,
         VkImageViewType type,
@@ -201,13 +213,18 @@ auto arline::Engine::execute() noexcept -> int
     {
         if (!arContext::acquireImage()) [[unlikely]]
         {
+            this->onResize();
             recordCommands();
         }
 
-        this->onResourcesUpdate();
+        if (this->onResourcesUpdate()) [[unlikely]]
+        {
+            recordCommands();
+        }
 
         if (!arContext::presentFrame()) [[unlikely]]
         {
+            this->onResize();
             recordCommands();
         }
 
@@ -363,7 +380,7 @@ static auto arWindow::create(ar::EngineConfig const& config) noexcept -> void
         L"ar",
         windowTitleBuffer,
         WS_OVERLAPPEDWINDOW,
-        100, 100,
+        CW_USEDEFAULT, CW_USEDEFAULT,
         config.width, config.height,
         nullptr, nullptr,
         g_wnd.hinstance,
@@ -383,7 +400,7 @@ static auto arWindow::create(ar::EngineConfig const& config) noexcept -> void
         sizeof(useDarkMode)
     );
 
-    ::ShowWindow(g_wnd.hwnd, SW_SHOWDEFAULT);
+    ::ShowWindow(g_wnd.hwnd, SW_SHOW);
     ::UpdateWindow(g_wnd.hwnd);
 
     AR_INFO_CALLBACK("Created Win32 Window: width [%d], height [%d], title [%s]", config.width, config.height, config.title.data())
@@ -434,6 +451,26 @@ auto arline::Window::GetHeight() noexcept -> i32_t
     return g_wnd.height;
 }
 
+auto arline::Window::GetFramebufferWidth() noexcept -> u32_t
+{
+    return g_ctx.surfaceExtent.width;
+}
+
+auto arline::Window::GetFramebufferHeight() noexcept -> u32_t
+{
+    return g_ctx.surfaceExtent.height;
+}
+
+auto arline::Window::GetAspect() noexcept -> f32_t
+{
+    return static_cast<f32_t>(g_wnd.width) / g_wnd.height;
+}
+
+auto arline::Window::GetFramebufferAspect() noexcept -> f32_t
+{
+    return static_cast<f32_t>(g_ctx.surfaceExtent.width) / g_ctx.surfaceExtent.height;
+}
+
 #endif
 #pragma endregion
 #pragma region Time Win32
@@ -448,7 +485,7 @@ static auto arTimer::create() noexcept -> void
 auto arTimer::update() noexcept -> void
 {
     auto now{ ar::getTime() };
-    g_timer.deltaTime = static_cast<f32_t>(now - g_timer.previousTime);
+    g_timer.deltaTime = now - g_timer.previousTime;
     g_timer.previousTime = now;
 }
 
@@ -460,10 +497,21 @@ auto arline::getTime() noexcept -> f64_t
     return static_cast<f64_t>(value.QuadPart - g_timer.timeOffset.QuadPart) / g_timer.frequency.QuadPart;
 }
 
-auto arline::getDeltaTime() noexcept -> f32_t
+auto arline::getTimef() noexcept -> f32_t
+{
+    return static_cast<f32_t>(ar::getTime());
+}
+
+auto arline::getDeltaTime() noexcept -> f64_t
 {
     return g_timer.deltaTime;
 }
+
+auto arline::getDeltaTimef() noexcept -> f32_t
+{
+    return static_cast<f32_t>(g_timer.deltaTime);
+}
+
 #pragma endregion
 #pragma region Input
 
@@ -499,10 +547,23 @@ arline::GraphicsCommands::GraphicsCommands() noexcept
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
     }};
 
+    arContext::resultCheck(vkResetCommandPool(g_ctx.device, g_ctx.graphicsCommandPool, {}));
+
     for (auto i{ g_ctx.imageCount }; i--; )
     {
         arContext::resultCheck(
             vkBeginCommandBuffer(g_ctx.images[i].graphicsCommandBuffer, &commandBufferBI)
+        );
+
+        vkCmdBindDescriptorSets(
+            g_ctx.images[i].graphicsCommandBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            g_ctx.pipelineLayout,
+            0u,
+            1u,
+            &g_ctx.descriptorSet,
+            0u,
+            nullptr
         );
     }
 }
@@ -522,7 +583,158 @@ arline::GraphicsCommands::operator b8_t() noexcept
     return static_cast<b8_t>(m.id--);
 }
 
-auto arline::GraphicsCommands::beginPresent(RenderPass const& renderPass) const noexcept -> void
+auto arline::GraphicsCommands::barrier(ImageBarrier barrier) const noexcept -> void
+{
+    VkImageAspectFlags constexpr aspects[] = { VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_DEPTH_BIT };
+    auto usingDepth{ false };
+
+    usingDepth = static_cast<b8_t>(usingDepth + (barrier.oldLayout == ar::ImageLayout::eDepthAttachment));
+    usingDepth = static_cast<b8_t>(usingDepth + (barrier.oldLayout == ar::ImageLayout::eDepthReadOnly));
+    usingDepth = static_cast<b8_t>(usingDepth + (barrier.newLayout == ar::ImageLayout::eDepthAttachment));
+    usingDepth = static_cast<b8_t>(usingDepth + (barrier.newLayout == ar::ImageLayout::eDepthReadOnly));    
+
+    auto imageBarrier{ VkImageMemoryBarrier2{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .oldLayout = static_cast<VkImageLayout>(barrier.oldLayout),
+        .newLayout = static_cast<VkImageLayout>(barrier.newLayout),
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = *reinterpret_cast<VkImage*>(&barrier.image),
+        .subresourceRange = {
+            .aspectMask = aspects[usingDepth],
+            .levelCount = VK_REMAINING_MIP_LEVELS,
+            .layerCount = VK_REMAINING_ARRAY_LAYERS
+        }
+    }};
+
+    switch (barrier.oldLayout)
+    {
+    using enum ar::ImageLayout;
+    case eShaderReadOnly:
+        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+        break;
+    case eColorAttachment:
+        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        imageBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        break;
+    case eDepthAttachment:
+        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        break;
+    }
+
+    switch (barrier.newLayout)
+    {
+    using enum ar::ImageLayout;
+    case eShaderReadOnly:
+        imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        imageBarrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+        break;
+    case eColorAttachment:
+        imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        imageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        break;
+    case eDepthAttachment:
+        imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        imageBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        break;
+    }
+
+    auto const dependency{ VkDependencyInfo{
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+        .imageMemoryBarrierCount = 1u,
+        .pImageMemoryBarriers = &imageBarrier
+    }};
+
+    vkCmdPipelineBarrier2(g_ctx.images[m.id].graphicsCommandBuffer, &dependency);
+}
+
+auto arline::GraphicsCommands::beginRendering(
+    ColorAttachments colorAttachments,
+    DepthAttachment depthAttachment
+) const noexcept -> void
+{
+    VkRenderingAttachmentInfo attachments[9];
+
+    for (auto i{ size_t{} }; i < colorAttachments.size(); ++i)
+    {
+        auto* attachment{ colorAttachments.begin() + i };
+
+        attachments[i] = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = reinterpret_cast<VkImageView*>(&attachment->image)[1],
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp = static_cast<VkAttachmentLoadOp>(attachment->loadOp),
+            .storeOp = static_cast<VkAttachmentStoreOp>(attachment->storeOp),
+            .clearValue = {
+                .color = VkClearColorValue{
+                    .int32 = {
+                        attachment->clearColor.int32[0],
+                        attachment->clearColor.int32[1],
+                        attachment->clearColor.int32[2],
+                        attachment->clearColor.int32[3]
+                    }
+                }
+            }
+        };
+    }
+
+    if (depthAttachment.pImage)
+    {
+        attachments[8] = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = reinterpret_cast<VkImageView*>(depthAttachment.pImage)[1],
+            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            .loadOp = static_cast<VkAttachmentLoadOp>(depthAttachment.loadOp),
+            .storeOp = static_cast<VkAttachmentStoreOp>(depthAttachment.storeOp),
+            .clearValue = {
+                .depthStencil = {
+                    .depth = 1.f
+                }
+            }
+        };
+    }
+
+    auto const renderingInfo{ VkRenderingInfo{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .renderArea = {
+            .extent = {
+                .width = colorAttachments.begin()->image.getWidth(),
+                .height = colorAttachments.begin()->image.getHeight()
+            }
+        },
+        .layerCount = 1u,
+        .colorAttachmentCount = static_cast<u32_t>(colorAttachments.size()),
+        .pColorAttachments = attachments,
+        .pDepthAttachment = depthAttachment.pImage ? &attachments[8] : nullptr
+    }};
+
+    auto const scissor{ VkRect2D{
+        .extent = {
+            .width = renderingInfo.renderArea.extent.width,
+            .height = renderingInfo.renderArea.extent.height
+        }
+    }};
+
+    auto const viewport{ VkViewport{
+        .y = static_cast<f32_t>(renderingInfo.renderArea.extent.height),
+        .width = static_cast<f32_t>(renderingInfo.renderArea.extent.width),
+        .height = -static_cast<f32_t>(renderingInfo.renderArea.extent.height),
+        .maxDepth = 1.f
+    }};
+
+    vkCmdBeginRendering(g_ctx.images[m.id].graphicsCommandBuffer, &renderingInfo);
+    vkCmdSetScissor(g_ctx.images[m.id].graphicsCommandBuffer, 0u, 1u, &scissor);
+    vkCmdSetViewport(g_ctx.images[m.id].graphicsCommandBuffer, 0u, 1u, &viewport);
+}
+
+auto arline::GraphicsCommands::endRendering() const noexcept -> void
+{
+    vkCmdEndRendering(g_ctx.images[m.id].graphicsCommandBuffer);
+}
+
+auto arline::GraphicsCommands::beginPresent() const noexcept -> void
 {
     auto const imageBarrier{ VkImageMemoryBarrier2{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -552,18 +764,8 @@ auto arline::GraphicsCommands::beginPresent(RenderPass const& renderPass) const 
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = g_ctx.images[m.id].view,
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .loadOp = static_cast<VkAttachmentLoadOp>(renderPass.loadOp),
-        .storeOp = static_cast<VkAttachmentStoreOp>(renderPass.storeOp),
-        .clearValue = {
-            .color = VkClearColorValue{
-                .int32 = {
-                    renderPass.clearColor.int32[0],
-                    renderPass.clearColor.int32[1],
-                    renderPass.clearColor.int32[2],
-                    renderPass.clearColor.int32[3]
-                }
-            }
-        }
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE
     }};
 
     auto const renderingInfo{ VkRenderingInfo{
@@ -659,14 +861,38 @@ auto arline::GraphicsCommands::bindPipeline(Pipeline const& pipeline) const noex
     );
 }
 
-auto arline::GraphicsCommands::draw(u32_t vertexCount) const noexcept -> void
+auto arline::GraphicsCommands::draw(u32_t vertexCount, u32_t instanceCount, u32_t vertex, u32_t instance) const noexcept -> void
 {
     vkCmdDraw(
         g_ctx.images[m.id].graphicsCommandBuffer,
         vertexCount,
-        1u,
-        0u,
-        0u
+        instanceCount,
+        vertex,
+        instance
+    );
+}
+
+auto arline::GraphicsCommands::drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride) const noexcept -> void
+{
+    vkCmdDrawIndirect(
+        g_ctx.images[m.id].graphicsCommandBuffer,
+        *reinterpret_cast<VkBuffer const*>(&buffer),
+        0ull,
+        drawCount,
+        stride
+    );
+}
+
+auto arline::GraphicsCommands::drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride) const noexcept -> void
+{
+    vkCmdDrawIndirectCount(
+        g_ctx.images[m.id].graphicsCommandBuffer,
+        *reinterpret_cast<VkBuffer const*>(&buffer),
+        0ull,
+        *reinterpret_cast<VkBuffer const*>(&countBuffer),
+        0ull,
+        maxDraws,
+        stride
     );
 }
 
@@ -792,6 +1018,8 @@ arline::Shader::~Shader() noexcept
     {
         vkDestroyShaderModule(g_ctx.device, shaderStageCI->module, nullptr);
     }
+
+    m = {};
 }
 
 arline::Shader::Shader(Shader&& other) noexcept
@@ -839,7 +1067,7 @@ arline::Pipeline::Pipeline(GraphicsConfig&& config) noexcept
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .polygonMode = static_cast<VkPolygonMode>(config.polygonMode),
         .cullMode = static_cast<VkCullModeFlags>(config.cullMode),
-        .frontFace = VK_FRONT_FACE_CLOCKWISE,
+        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .lineWidth = 1.0f
     }};
 
@@ -849,9 +1077,6 @@ arline::Pipeline::Pipeline(GraphicsConfig&& config) noexcept
     }};
 
     auto const blendAttachmentState{ VkPipelineColorBlendAttachmentState{
-        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
-        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
     }};
 
@@ -864,7 +1089,9 @@ arline::Pipeline::Pipeline(GraphicsConfig&& config) noexcept
 
     auto const depthStencilStateCreateInfo{ VkPipelineDepthStencilStateCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthCompareOp = VK_COMPARE_OP_LESS
+        .depthTestEnable = static_cast<u32_t>(config.depthStencilState.depthTestEnable),
+        .depthWriteEnable = static_cast<u32_t>(config.depthStencilState.depthWriteEnable),
+        .depthCompareOp = static_cast<VkCompareOp>(config.depthStencilState.compareOp)
     }};
 
     auto const vertexInputStateCreateInfo{ VkPipelineVertexInputStateCreateInfo{
@@ -912,6 +1139,8 @@ arline::Pipeline::~Pipeline() noexcept
     {
         vkDestroyPipeline(g_ctx.device, static_cast<VkPipeline>(m.pHandle), nullptr);
     }
+
+    m = {};
 }
 
 arline::Pipeline::Pipeline(Pipeline&& other) noexcept
@@ -964,6 +1193,12 @@ arline::Buffer::Buffer(size_t capacity) noexcept
         reinterpret_cast<VmaAllocation*>(&m.pAllocation),
         nullptr
     ));
+
+    arContext::resultCheck(vmaMapMemory(
+        g_ctx.allocator,
+        static_cast<VmaAllocation>(m.pAllocation),
+        reinterpret_cast<void**>(&m.pMapped)
+    ));
 }
 
 arline::Buffer::Buffer(Buffer&& other) noexcept
@@ -976,12 +1211,19 @@ arline::Buffer::~Buffer() noexcept
 {
     if (m.pHandle)
     {
+        vmaUnmapMemory(
+            g_ctx.allocator,
+            static_cast<VmaAllocation>(m.pAllocation)
+        );
+
         vmaDestroyBuffer(
             g_ctx.allocator,
             static_cast<VkBuffer>(m.pHandle),
             static_cast<VmaAllocation>(m.pAllocation)
         );
     }
+
+    m = {};
 }
 
 auto arline::Buffer::operator=(Buffer&& other) noexcept -> Buffer&
@@ -1004,13 +1246,190 @@ auto arline::Buffer::getAddress() noexcept -> u64_t
 
 auto arline::Buffer::write(void const* pData, size_t size, size_t offset) noexcept -> void
 {
-    arContext::resultCheck(vmaCopyMemoryToAllocation(
+    size = size ? size : m.capacity;
+    memcpy(m.pMapped + offset, pData, size);
+    arContext::resultCheck(vmaFlushAllocation(
         g_ctx.allocator,
-        pData,
         static_cast<VmaAllocation>(m.pAllocation),
         offset,
-        size ? size : m.capacity
+        size
     ));
+}
+
+#pragma endregion
+#pragma region Image
+
+arline::Image::~Image() noexcept
+{
+    if (m.pView)
+    {
+        vkDestroyImageView(
+            g_ctx.device,
+            static_cast<VkImageView>(m.pView),
+            nullptr
+        );
+    }
+
+    if (m.pHandle)
+    {
+        vmaDestroyImage(
+            g_ctx.allocator,
+            static_cast<VkImage>(m.pHandle),
+            static_cast<VmaAllocation>(m.pAllocation)
+        );
+    }
+
+    m = {};
+}
+
+arline::Image::Image(Image&& other) noexcept
+    : m{ other.m }
+{
+    other.m = {};
+}
+
+auto arline::Image::operator=(Image&& other) noexcept -> Image&
+{
+    auto index{ m.index };
+    auto sampler{ m.sampler };
+
+    this->~Image();
+    this->m = other.m;
+    other.m = {};
+
+    this->makeResident(sampler, index);
+
+    return *this;
+}
+
+arline::Image::Image(ImageCreateInfo const& imageCreateInfo) noexcept
+    : m{
+        .sampler = imageCreateInfo.sampler,
+        .width = imageCreateInfo.width ? imageCreateInfo.width : g_ctx.surfaceExtent.width,
+        .height = imageCreateInfo.height ? imageCreateInfo.height : g_ctx.surfaceExtent.height
+    }
+{
+    VkFormat const formats[] = { g_ctx.surfaceFormat.format, VK_FORMAT_D32_SFLOAT };
+    VkImageAspectFlags constexpr aspects[] = { VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_DEPTH_BIT };
+    VkImageUsageFlags constexpr usages[] = {
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+    };
+    VkImageLayout constexpr layouts[] = { 
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,  
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+    };
+
+    auto usage{ static_cast<u8_t>(imageCreateInfo.usage) };
+
+    auto const imageCI{ VkImageCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = formats[usage],
+        .extent = {
+            .width = m.width,
+            .height = m.height,
+            .depth = 1u
+        },
+        .mipLevels = 1u,
+        .arrayLayers = 1u,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .usage = m.sampler ? usages[usage] | VK_IMAGE_USAGE_SAMPLED_BIT : usages[usage]
+    }};
+
+    auto const allocationCI{ VmaAllocationCreateInfo{
+        .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        .priority = 1.f
+    }};
+
+    arContext::resultCheck(vmaCreateImage(
+        g_ctx.allocator,
+        &imageCI,
+        &allocationCI,
+        reinterpret_cast<VkImage*>(&m.pHandle),
+        reinterpret_cast<VmaAllocation*>(&m.pAllocation),
+        nullptr
+    ));
+
+    m.pView = arContext::createImageView(
+        static_cast<VkImage>(m.pHandle),
+        VK_IMAGE_VIEW_TYPE_2D,
+        formats[usage],
+        aspects[usage],
+        1u
+    );
+
+    arContext::beginTransfer();
+
+    auto const imageBarrier{ VkImageMemoryBarrier2{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = layouts[!m.sampler * (usage + 1ui8)],
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = static_cast<VkImage>(m.pHandle),
+        .subresourceRange = {
+            .aspectMask = aspects[usage],
+            .levelCount = 1u,
+            .layerCount = 1u
+        }
+    }};
+
+    auto const dependency{ VkDependencyInfo{
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+        .imageMemoryBarrierCount = 1u,
+        .pImageMemoryBarriers = &imageBarrier
+    }};
+
+    vkCmdPipelineBarrier2(g_ctx.transferCommandBuffer, &dependency);
+
+    arContext::endTransfer();
+
+    this->makeResident(m.sampler, 0u);
+}
+
+auto arline::Image::makeResident(Sampler sampler, u32_t index) noexcept -> void
+{
+    if (sampler)
+    {
+        if (index)
+        {
+            m.index = index;
+            --g_ctx.allocatedSampledImageCount;
+        }
+        else
+        {
+            m.index = ++g_ctx.allocatedSampledImageCount;
+        }
+
+        auto const writeImage{ VkDescriptorImageInfo{
+            .sampler = *(&g_ctx.linearToEdgeSampler + (static_cast<u8_t>(sampler) - 1ui8)),
+            .imageView = static_cast<VkImageView>(m.pView),
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        }};
+
+        auto const write{ VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = g_ctx.descriptorSet,
+            .dstArrayElement = m.index,
+            .descriptorCount = 1u,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &writeImage
+        }};
+
+        vkUpdateDescriptorSets(
+            g_ctx.device,
+            1u,
+            &write,
+            0u,
+            nullptr
+        );
+    }
 }
 
 #pragma endregion
@@ -1325,6 +1744,7 @@ static auto arContext::create() noexcept -> void
         auto features12{ VkPhysicalDeviceVulkan12Features{
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext = &features11,
+            .descriptorBindingPartiallyBound = 1u,
             .bufferDeviceAddress = 1u
         }};
 
@@ -1390,6 +1810,70 @@ static auto arContext::create() noexcept -> void
         arContext::resultCheck(vkCreateSemaphore(g_ctx.device, &semaphoreCI, nullptr, &g_ctx.graphicsSemaphore));
         arContext::resultCheck(vkCreateSemaphore(g_ctx.device, &semaphoreCI, nullptr, &g_ctx.acquireSemaphore));
         arContext::resultCheck(vkCreateFence(g_ctx.device, &fenceCI, nullptr, &g_ctx.fence));
+    }   
+    {
+        VkDescriptorPoolSize poolSizes[] = {
+            { .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 64u * 1024u }
+        };
+
+        auto const descriptorPoolCI{ VkDescriptorPoolCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
+            .maxSets = 1u,
+            .poolSizeCount = 1u,
+            .pPoolSizes = poolSizes
+        }};
+
+        arContext::resultCheck(vkCreateDescriptorPool(
+            g_ctx.device,
+            &descriptorPoolCI,
+            nullptr,
+            &g_ctx.descriptorPool
+        ));
+
+        VkDescriptorSetLayoutBinding const bindings[] = {{
+            .binding = 0u,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 64u * 1024u,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+        }};
+
+        VkDescriptorBindingFlags const bindingFlags[] = {
+            VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
+        };
+
+        auto const bindingFlagsCI{ VkDescriptorSetLayoutBindingFlagsCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+            .bindingCount = 1u,
+            .pBindingFlags = bindingFlags
+        }};
+
+        auto const descriptorSetLayoutCI{ VkDescriptorSetLayoutCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .pNext = &bindingFlagsCI,
+            .bindingCount = 1u,
+            .pBindings = bindings
+        }};
+
+        arContext::resultCheck(vkCreateDescriptorSetLayout(
+            g_ctx.device,
+            &descriptorSetLayoutCI,
+            nullptr,
+            &g_ctx.descriptorSetLayout
+        ));
+
+        auto const descriptorSetAI{ VkDescriptorSetAllocateInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = g_ctx.descriptorPool,
+            .descriptorSetCount = 1u,
+            .pSetLayouts = &g_ctx.descriptorSetLayout
+        }};
+
+        arContext::resultCheck(vkAllocateDescriptorSets(
+            g_ctx.device,
+            &descriptorSetAI,
+            &g_ctx.descriptorSet
+        ));
     }
     {
         auto const pushConstantRange{ VkPushConstantRange{
@@ -1399,11 +1883,89 @@ static auto arContext::create() noexcept -> void
 
         auto const pipelineLayoutCI{ VkPipelineLayoutCreateInfo{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .setLayoutCount = 1u,
+            .pSetLayouts = &g_ctx.descriptorSetLayout,
             .pushConstantRangeCount = 1u,
-            .pPushConstantRanges = &pushConstantRange
+            .pPushConstantRanges = &pushConstantRange,
         }};
 
         arContext::resultCheck(vkCreatePipelineLayout(g_ctx.device, &pipelineLayoutCI, nullptr, &g_ctx.pipelineLayout));
+    }
+    {
+        auto samplerCI{ VkSamplerCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .maxLod = VK_LOD_CLAMP_NONE
+        }};
+
+        samplerCI.addressModeU = samplerCI.addressModeV =
+        samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerCI.magFilter = samplerCI.minFilter = VK_FILTER_LINEAR;
+
+        arContext::resultCheck(vkCreateSampler(
+            g_ctx.device,
+            &samplerCI,
+            nullptr,
+            &g_ctx.linearToEdgeSampler
+        ));
+
+        samplerCI.addressModeU = samplerCI.addressModeV =
+        samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        samplerCI.magFilter = samplerCI.minFilter = VK_FILTER_LINEAR;
+
+        arContext::resultCheck(vkCreateSampler(
+            g_ctx.device,
+            &samplerCI,
+            nullptr,
+            &g_ctx.linearRepeatSampler
+        ));
+
+        samplerCI.addressModeU = samplerCI.addressModeV =
+        samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerCI.magFilter = samplerCI.minFilter = VK_FILTER_NEAREST;
+
+        arContext::resultCheck(vkCreateSampler(
+            g_ctx.device,
+            &samplerCI,
+            nullptr,
+            &g_ctx.nearestToEdgeSampler
+        ));
+
+        samplerCI.addressModeU = samplerCI.addressModeV =
+        samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        samplerCI.magFilter = samplerCI.minFilter = VK_FILTER_NEAREST;
+
+        arContext::resultCheck(vkCreateSampler(
+            g_ctx.device,
+            &samplerCI,
+            nullptr,
+            &g_ctx.nearestRepeatSampler
+        ));
+    }
+    {
+        auto const commandPoolCI{ VkCommandPoolCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .queueFamilyIndex = g_ctx.graphicsFamily
+        }};
+
+        arContext::resultCheck(vkCreateCommandPool(
+            g_ctx.device,
+            &commandPoolCI,
+            nullptr,
+            &g_ctx.transferCommandPool
+        ));
+
+        auto const commandBufferAI{ VkCommandBufferAllocateInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = g_ctx.transferCommandPool,
+            .commandBufferCount = 1u
+        }};
+
+        arContext::resultCheck(vkAllocateCommandBuffers(
+            g_ctx.device,
+            &commandBufferAI,
+            &g_ctx.transferCommandBuffer
+        ));
     }
 
     AR_INFO_CALLBACK("Created Context")
@@ -1420,7 +1982,14 @@ static auto arContext::teardown() noexcept -> void
     teardownSwapchain();
 
     vmaDestroyAllocator(g_ctx.allocator);
+    vkDestroySampler(g_ctx.device, g_ctx.linearRepeatSampler, nullptr);
+    vkDestroySampler(g_ctx.device, g_ctx.linearToEdgeSampler, nullptr);
+    vkDestroySampler(g_ctx.device, g_ctx.nearestRepeatSampler, nullptr);
+    vkDestroySampler(g_ctx.device, g_ctx.nearestToEdgeSampler, nullptr);
     vkDestroyPipelineLayout(g_ctx.device, g_ctx.pipelineLayout, nullptr);
+    vkDestroyDescriptorSetLayout(g_ctx.device, g_ctx.descriptorSetLayout, nullptr);
+    vkDestroyDescriptorPool(g_ctx.device, g_ctx.descriptorPool, nullptr);
+    vkDestroyCommandPool(g_ctx.device, g_ctx.transferCommandPool, nullptr);
     vkDestroyDevice(g_ctx.device, nullptr);
 
     vkDestroySurfaceKHR(g_ctx.instance, g_ctx.surface, nullptr);
@@ -1691,6 +2260,31 @@ static auto arContext::teardownSwapchain() noexcept -> void
         g_ctx.swapchain = nullptr;
         g_ctx.surfaceFormat = {};
     }
+}
+
+static auto arContext::beginTransfer() noexcept -> void
+{
+    auto const beginInfo{ VkCommandBufferBeginInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    }};
+
+    arContext::resultCheck(vkResetCommandPool(g_ctx.device, g_ctx.transferCommandPool, {}));
+    arContext::resultCheck(vkBeginCommandBuffer(g_ctx.transferCommandBuffer, &beginInfo));
+}
+
+static auto arContext::endTransfer() noexcept -> void
+{
+    arContext::resultCheck(vkEndCommandBuffer(g_ctx.transferCommandBuffer));
+
+    auto const submitInfo{ VkSubmitInfo{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1u,
+        .pCommandBuffers = &g_ctx.transferCommandBuffer
+    }};
+
+    arContext::resultCheck(vkQueueSubmit(g_ctx.graphicsQueue, 1u, &submitInfo, nullptr));
+    arContext::resultCheck(vkQueueWaitIdle(g_ctx.graphicsQueue));
 }
 
 static auto arContext::createImageView(

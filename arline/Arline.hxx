@@ -93,46 +93,81 @@ namespace arline
 
     enum class ShaderStage : u8_t
     {
-        eVertex        = 0x01ui8,
-        eFragment      = 0x10ui8,
-        eCompute       = 0x20ui8
+        eVertex          = 0x01ui8,
+        eFragment        = 0x10ui8,
+        eCompute         = 0x20ui8
     };
 
     enum class Topology : u8_t
     {
-        ePoint         = 0x00ui8,
-        eLineList      = 0x01ui8,
-        eLineStrip     = 0x02ui8,
-        eTriangleList  = 0x03ui8,
-        eTriangleStrip = 0x04ui8,
-        eTriangleFan   = 0x05ui8
+        ePoint           = 0x00ui8,
+        eLineList        = 0x01ui8,
+        eLineStrip       = 0x02ui8,
+        eTriangleList    = 0x03ui8,
+        eTriangleStrip   = 0x04ui8,
+        eTriangleFan     = 0x05ui8
     };
 
     enum class PolygonMode : u8_t
     {
-        eFill          = 0x00ui8,
-        eLine          = 0x01ui8,
-        ePoint         = 0x02ui8
+        eFill            = 0x00ui8,
+        eLine            = 0x01ui8,
+        ePoint           = 0x02ui8
     };
 
     enum class CullMode : u8_t
     {
-        eNone          = 0x00ui8,
-        eFront         = 0x01ui8,
-        eBack          = 0x02ui8
+        eNone            = 0x00ui8,
+        eFront           = 0x01ui8,
+        eBack            = 0x02ui8
     };
 
     enum class LoadOp : u8_t
     {
-        eLoad          = 0x00ui8,
-        eClear         = 0x01ui8,
-        eDontCare      = 0x02ui8
+        eLoad            = 0x00ui8,
+        eClear           = 0x01ui8,
+        eDontCare        = 0x02ui8
     };
 
     enum class StoreOp : u8_t
     {
-        eStore         = 0x00ui8,
-        eDontCare      = 0x01ui8
+        eStore           = 0x00ui8,
+        eDontCare        = 0x01ui8
+    };
+
+    enum class ImageUsage : u8_t
+    {
+        eColorAttachment = 0x00ui8,
+        eDepthAttachment = 0x01ui8
+    };
+
+    enum class ImageLayout : u8_t
+    {
+        eColorAttachment = 0x02ui8,
+        eDepthAttachment = 0x03ui8,
+        eDepthReadOnly   = 0x04ui8,
+        eShaderReadOnly  = 0x05ui8
+    };
+
+    enum CompareOp : u8_t
+    {
+        eNever           = 0x00ui8,
+        eLess            = 0x01ui8,
+        eEqual           = 0x02ui8,
+        eLequal          = 0x03ui8,
+        eGreater         = 0x04ui8,
+        eNotEqual        = 0x05ui8,
+        eGequal          = 0x06ui8,
+        eAlways          = 0x07ui8
+    };
+
+    enum Sampler : u8_t
+    {
+        eNone            = 0x00ui8,
+        eLinearToEdge    = 0x01ui8,
+        eLinearRepeat    = 0x02ui8,
+        eNearestToEdge   = 0x03ui8,
+        eNearestRepeat   = 0x04ui8
     };
 
     union ClearColor
@@ -152,19 +187,12 @@ namespace arline
         static consteval auto Yellow()  -> ClearColor { return { 1.0f, 1.0f, 0.0f, 1.0f}; }
     };
 
-    struct RenderPass
-    {
-        LoadOp loadOp;
-        StoreOp storeOp;
-        ClearColor clearColor;
-    };
-
     struct EngineConfig
     {
-        [[nodiscard]] static auto Default() -> EngineConfig
+        [[nodiscard]] inline static auto Default() -> EngineConfig
         {
             return {
-                .title = "Arline Application",
+                .title = "",
                 .width = 1280,
                 .height = 720,
                 .infoCallback = [](std::string_view){},
@@ -179,8 +207,56 @@ namespace arline
         b8_t enableValidationLayers;
     };
 
+    struct DrawIndirectCommand
+    {
+        u32_t vertexCount;
+        u32_t instanceCount;
+        u32_t firstVertex;
+        u32_t firstInstance;
+    };
+
+    struct DepthStencilState
+    {
+        b8_t depthTestEnable;
+        b8_t depthWriteEnable;
+        CompareOp compareOp;
+    };
+
+    class Image;
+    struct ImageBarrier
+    {
+        Image& image;
+        ImageLayout oldLayout;
+        ImageLayout newLayout;
+    };
+
+    struct ColorAttachment
+    {
+        Image& image;
+        LoadOp loadOp;
+        StoreOp storeOp;
+        ClearColor clearColor;
+    };
+
+    struct DepthAttachment
+    {
+        Image* pImage;
+        LoadOp loadOp;
+        StoreOp storeOp;
+    };
+
+    struct ImageCreateInfo
+    {
+        u32_t width;
+        u32_t height;
+        ImageUsage usage;
+        Sampler sampler;
+    };
+
+    [[nodiscard]] auto getTimef()         noexcept -> f32_t;
     [[nodiscard]] auto getTime()          noexcept -> f64_t;
-    [[nodiscard]] auto getDeltaTime()     noexcept -> f32_t;
+    [[nodiscard]] auto getDeltaTimef()    noexcept -> f32_t;
+    [[nodiscard]] auto getDeltaTime()     noexcept -> f64_t;
 
     [[nodiscard]] auto isKeyPressed(Key)  noexcept -> b8_t;
     [[nodiscard]] auto isKeyReleased(Key) noexcept -> b8_t;
@@ -193,8 +269,12 @@ namespace arline
         auto WaitEvents() noexcept -> void;
         auto SetTitle(std::string_view title) noexcept -> void;
 
-        [[nodiscard]] auto GetWidth()  noexcept -> i32_t;
-        [[nodiscard]] auto GetHeight() noexcept -> i32_t;
+        [[nodiscard]] auto GetWidth()             noexcept -> i32_t;
+        [[nodiscard]] auto GetHeight()            noexcept -> i32_t;
+        [[nodiscard]] auto GetFramebufferWidth()  noexcept -> u32_t;
+        [[nodiscard]] auto GetFramebufferHeight() noexcept -> u32_t;
+        [[nodiscard]] auto GetAspect()            noexcept -> f32_t;
+        [[nodiscard]] auto GetFramebufferAspect() noexcept -> f32_t;
     };
 
     class Shader
@@ -219,6 +299,7 @@ namespace arline
     struct GraphicsConfig
     {
         std::initializer_list<Shader> shaders;
+        DepthStencilState depthStencilState;
         Topology    topology    = Topology::eTriangleList;
         PolygonMode polygonMode = PolygonMode::eFill;
         CullMode    cullMode    = CullMode::eNone;
@@ -257,32 +338,50 @@ namespace arline
         auto getAddress() noexcept -> u64_t;
         auto write(void const* pData, size_t size = 0ull, size_t offset = 0ull) noexcept -> void;
 
+    public:
+        [[nodiscard]] auto getCapacity() const noexcept { return m.capacity; }
+
     private:
         struct Members
         {
             void* pHandle;
             void* pAllocation;
+            u8_t* pMapped;
             size_t capacity;
         } m;
     };
 
-    class StaticBuffer
+    class Image
     {
     public:
-        inline StaticBuffer() noexcept : m{} {}
-        StaticBuffer(size_t capacity) noexcept;
-        ~StaticBuffer() noexcept;
-        StaticBuffer(StaticBuffer const&) = delete;
-        StaticBuffer(StaticBuffer&& other) noexcept;
-        auto operator=(StaticBuffer const&) -> StaticBuffer& = delete;
-        auto operator=(StaticBuffer&& other) noexcept -> StaticBuffer&;
+        inline Image() : m{} {}
+        ~Image() noexcept;
+        Image(Image const&) = delete;
+        Image(Image&& other) noexcept;
+        auto operator=(Image const&) -> Image& = delete;
+        auto operator=(Image&& other) noexcept -> Image&;
+
+    public:
+        Image(ImageCreateInfo const& imageCreateInfo) noexcept;
+
+    private:
+        auto makeResident(Sampler, u32_t) noexcept -> void;
+
+    public:
+        [[nodiscard]] auto getWidth()  const noexcept { return m.width;  }
+        [[nodiscard]] auto getHeight() const noexcept { return m.height; }
+        [[nodiscard]] auto getIndex()  const noexcept { return m.index;  }
 
     private:
         struct Members
         {
             void* pHandle;
+            void* pView;
             void* pAllocation;
-            size_t capacity;
+            Sampler sampler;
+            u32_t width;
+            u32_t height;
+            u32_t index;
         } m;
     };
 
@@ -300,10 +399,16 @@ namespace arline
         operator b8_t() noexcept;
 
     public:
-        auto beginPresent(RenderPass const& renderPass) const noexcept -> void;
+        using ColorAttachments = std::initializer_list<ColorAttachment>;
+        auto barrier(ImageBarrier barrier) const noexcept -> void;
+        auto beginRendering(ColorAttachments, DepthAttachment = {}) const noexcept -> void;
+        auto endRendering() const noexcept -> void;
+        auto beginPresent() const noexcept -> void;
         auto endPresent() const noexcept -> void;
         auto bindPipeline(Pipeline const& pipeline) const noexcept -> void;
-        auto draw(u32_t vertexCount) const noexcept -> void;
+        auto draw(u32_t vertexCount, u32_t instanceCount = 1u, u32_t vertex = 0u, u32_t instance = 0u) const noexcept -> void;
+        auto drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = sizeof(DrawIndirectCommand)) const noexcept -> void;
+        auto drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = sizeof(DrawIndirectCommand)) const noexcept -> void;
         auto pushConstant(void const* pData, u32_t size) const noexcept -> void;
 
     private:
@@ -324,8 +429,9 @@ namespace arline
         auto operator=(Engine&&) -> Engine& = delete;
 
     protected:
-        virtual auto onUpdate() -> void = 0;
-        virtual auto onResourcesUpdate() -> void = 0;
+        virtual auto onResize() -> void { }
+        virtual auto onUpdate() -> void { Window::PollEvents(); }
+        virtual auto onResourcesUpdate() -> b8_t { return false; }
         virtual auto onCommandsRecord(GraphicsCommands const&) -> void = 0;
 
     public:

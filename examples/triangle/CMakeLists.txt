@@ -1,5 +1,4 @@
-set(ARLINE_INFO_CALLBACK ON)
-add_executable(Triangle example.cpp)
+add_executable(Triangle example.cxx)
 target_link_libraries(Triangle PUBLIC arline)
 target_compile_features(Triangle PUBLIC cxx_std_20)
 
