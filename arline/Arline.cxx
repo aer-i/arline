@@ -1851,6 +1851,7 @@ static auto arContext::create() noexcept -> void
         auto const descriptorSetLayoutCI{ VkDescriptorSetLayoutCreateInfo{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
             .pNext = &bindingFlagsCI,
+            .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
             .bindingCount = 1u,
             .pBindings = bindings
         }};

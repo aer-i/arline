@@ -69,7 +69,7 @@ public:
             ar::ColorAttachment{
                 .image = colorFramebuffer,
                 .loadOp = ar::LoadOp::eClear,
-                .storeOp = ar::StoreOp::eDontCare,
+                .storeOp = ar::StoreOp::eStore,
                 .clearColor = ar::ClearColor{ 0.6f, 0.7f, 1.f, 1.f },
             }},
             ar::DepthAttachment{
