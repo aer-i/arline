@@ -211,8 +211,17 @@ namespace arline
     {
         u32_t vertexCount;
         u32_t instanceCount;
-        u32_t firstVertex;
-        u32_t firstInstance;
+        u32_t vertex;
+        u32_t instance;
+    };
+
+    struct DrawIndexedIndirectCommand
+    {
+        u32_t indexCount;
+        u32_t instanceCount;
+        u32_t index;
+        i32_t vertexOffset;
+        u32_t instance;
     };
 
     struct DepthStencilState
@@ -327,7 +336,6 @@ namespace arline
     {
     public:
         inline Buffer() noexcept : m{} {}
-        Buffer(size_t capacity) noexcept;
         ~Buffer() noexcept;
         Buffer(Buffer const&) = delete;
         Buffer(Buffer&& other) noexcept;
@@ -335,20 +343,36 @@ namespace arline
         auto operator=(Buffer&& other) noexcept -> Buffer&;
 
     public:
-        auto getAddress() noexcept -> u64_t;
-        auto write(void const* pData, size_t size = 0ull, size_t offset = 0ull) noexcept -> void;
-
-    public:
         [[nodiscard]] auto getCapacity() const noexcept { return m.capacity; }
+        [[nodiscard]] auto getAddress() const noexcept -> u64_t;
 
-    private:
+    protected:
         struct Members
         {
             void* pHandle;
             void* pAllocation;
-            u8_t* pMapped;
             size_t capacity;
         } m;
+    };
+
+    class DynamicBuffer : public Buffer
+    {
+    public:
+        using Buffer::Buffer;
+        DynamicBuffer(size_t capacity) noexcept;
+
+    public:
+        auto write(void const* pData, size_t size = 0ull, size_t offset = 0ull) noexcept -> void;
+
+    private:
+        u8_t* m_pMapped;
+    };
+
+    class StaticBuffer : public Buffer
+    {
+    public:
+        using Buffer::Buffer;
+        StaticBuffer(void const* pData, size_t dataSize);
     };
 
     class Image
@@ -407,11 +431,16 @@ namespace arline
         auto endPresent() const noexcept -> void;
         auto bindPipeline(Pipeline const& pipeline) const noexcept -> void;
         auto draw(u32_t vertexCount, u32_t instanceCount = 1u, u32_t vertex = 0u, u32_t instance = 0u) const noexcept -> void;
-        auto drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = sizeof(DrawIndirectCommand)) const noexcept -> void;
-        auto drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = sizeof(DrawIndirectCommand)) const noexcept -> void;
+        auto drawIndexed(u32_t indexCount, u32_t instanceCount = 1u, u32_t index = 0u, i32_t vertexOffset = 0, u32_t instance = 0u) const noexcept -> void;
+        auto drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = s_id) const noexcept -> void;
+        auto drawIndexedIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = s_idi) const noexcept -> void;
+        auto drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = s_id) const noexcept -> void;
+        auto drawIndexedIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = s_idi) const noexcept -> void;
         auto pushConstant(void const* pData, u32_t size) const noexcept -> void;
 
     private:
+        static constexpr u32_t s_id = sizeof(DrawIndirectCommand);
+        static constexpr u32_t s_idi = sizeof(DrawIndexedIndirectCommand);
         struct Members
         {
             u32_t id;

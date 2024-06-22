@@ -872,6 +872,18 @@ auto arline::GraphicsCommands::draw(u32_t vertexCount, u32_t instanceCount, u32_
     );
 }
 
+auto arline::GraphicsCommands::drawIndexed(u32_t indexCount, u32_t instanceCount, u32_t index, i32_t vertexOffset, u32_t instance) const noexcept -> void
+{
+    vkCmdDrawIndexed(
+        g_ctx.images[m.id].graphicsCommandBuffer,
+        indexCount,
+        instanceCount,
+        index,
+        vertexOffset,
+        instance
+    );
+}
+
 auto arline::GraphicsCommands::drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride) const noexcept -> void
 {
     vkCmdDrawIndirect(
@@ -883,9 +895,33 @@ auto arline::GraphicsCommands::drawIndirect(Buffer const& buffer, u32_t drawCoun
     );
 }
 
+auto arline::GraphicsCommands::drawIndexedIndirect(Buffer const &buffer, u32_t drawCount, u32_t stride) const noexcept -> void
+{
+    vkCmdDrawIndexedIndirect(
+        g_ctx.images[m.id].graphicsCommandBuffer,
+        *reinterpret_cast<VkBuffer const*>(&buffer),
+        0ull,
+        drawCount,
+        stride
+    );
+}
+
 auto arline::GraphicsCommands::drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride) const noexcept -> void
 {
     vkCmdDrawIndirectCount(
+        g_ctx.images[m.id].graphicsCommandBuffer,
+        *reinterpret_cast<VkBuffer const*>(&buffer),
+        0ull,
+        *reinterpret_cast<VkBuffer const*>(&countBuffer),
+        0ull,
+        maxDraws,
+        stride
+    );
+}
+
+auto arline::GraphicsCommands::drawIndexedIndirectCount(Buffer const &buffer, Buffer const &countBuffer, u32_t maxDraws, u32_t stride) const noexcept -> void
+{
+    vkCmdDrawIndexedIndirectCount(
         g_ctx.images[m.id].graphicsCommandBuffer,
         *reinterpret_cast<VkBuffer const*>(&buffer),
         0ull,
@@ -1161,12 +1197,52 @@ auto arline::Pipeline::operator=(Pipeline&& other) noexcept -> Pipeline&
 #pragma endregion
 #pragma region Buffer
 
-arline::Buffer::Buffer(size_t capacity) noexcept
-    : m{
-        .capacity = capacity
+arline::Buffer::Buffer(Buffer&& other) noexcept
+    : m{ other.m }
+{
+    other.m = {};
+}
+
+arline::Buffer::~Buffer() noexcept
+{
+    if (m.pHandle)
+    {
+        vmaDestroyBuffer(
+            g_ctx.allocator,
+            static_cast<VkBuffer>(m.pHandle),
+            static_cast<VmaAllocation>(m.pAllocation)
+        );
     }
+
+    m = {};
+}
+
+auto arline::Buffer::operator=(Buffer&& other) noexcept -> Buffer&
+{
+    this->~Buffer();
+    this->m = other.m;
+    other.m = {};
+
+    return *this;
+}
+
+auto arline::Buffer::getAddress() const noexcept -> u64_t
+{
+    auto const bufferDAI{ VkBufferDeviceAddressInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = static_cast<VkBuffer>(m.pHandle)
+    }};
+
+    return vkGetBufferDeviceAddress(g_ctx.device, &bufferDAI);
+}
+
+#pragma endregion
+#pragma region Dynamic Buffer
+
+arline::DynamicBuffer::DynamicBuffer(size_t capacity) noexcept
 {
     static constexpr auto usage{ VkBufferUsageFlags{
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -1185,75 +1261,147 @@ arline::Buffer::Buffer(size_t capacity) noexcept
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
     }};
 
+    VkBuffer buffer;
+    VmaAllocation allocation;
+
     arContext::resultCheck(vmaCreateBuffer(
         g_ctx.allocator,
         &bufferCI,
         &allocationCI,
-        reinterpret_cast<VkBuffer*>(&m.pHandle),
-        reinterpret_cast<VmaAllocation*>(&m.pAllocation),
+        &buffer,
+        &allocation,
         nullptr
     ));
 
     arContext::resultCheck(vmaMapMemory(
         g_ctx.allocator,
-        static_cast<VmaAllocation>(m.pAllocation),
-        reinterpret_cast<void**>(&m.pMapped)
+        allocation,
+        reinterpret_cast<void**>(&m_pMapped)
     ));
+
+    m = {
+        .pHandle = buffer,
+        .pAllocation = allocation,
+        .capacity = capacity
+    };
 }
 
-arline::Buffer::Buffer(Buffer&& other) noexcept
-    : m{ other.m }
-{
-    other.m = {};
-}
-
-arline::Buffer::~Buffer() noexcept
-{
-    if (m.pHandle)
-    {
-        vmaUnmapMemory(
-            g_ctx.allocator,
-            static_cast<VmaAllocation>(m.pAllocation)
-        );
-
-        vmaDestroyBuffer(
-            g_ctx.allocator,
-            static_cast<VkBuffer>(m.pHandle),
-            static_cast<VmaAllocation>(m.pAllocation)
-        );
-    }
-
-    m = {};
-}
-
-auto arline::Buffer::operator=(Buffer&& other) noexcept -> Buffer&
-{
-    this->~Buffer();
-    this->m = other.m;
-    other.m = {};
-    return *this;
-}
-
-auto arline::Buffer::getAddress() noexcept -> u64_t
-{
-    auto const bufferDAI{ VkBufferDeviceAddressInfo{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = static_cast<VkBuffer>(m.pHandle)
-    }};
-
-    return vkGetBufferDeviceAddress(g_ctx.device, &bufferDAI);
-}
-
-auto arline::Buffer::write(void const* pData, size_t size, size_t offset) noexcept -> void
+auto arline::DynamicBuffer::write(void const* pData, size_t size, size_t offset) noexcept -> void
 {
     size = size ? size : m.capacity;
-    memcpy(m.pMapped + offset, pData, size);
+    memcpy(m_pMapped + offset, pData, size);
     arContext::resultCheck(vmaFlushAllocation(
         g_ctx.allocator,
         static_cast<VmaAllocation>(m.pAllocation),
         offset,
         size
     ));
+}
+
+#pragma endregion
+#pragma region Static Buffer
+
+arline::StaticBuffer::StaticBuffer(void const* pData, size_t dataSize)
+{
+    static constexpr auto usage{ VkBufferUsageFlags{
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+    }};
+
+    auto const bufferCI{ VkBufferCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = dataSize,
+        .usage = usage
+    }};
+
+    auto const allocationCI{ VmaAllocationCreateInfo{
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
+    }};
+
+    VkBuffer buffer;
+    VmaAllocation allocation;
+
+    arContext::resultCheck(vmaCreateBuffer(
+        g_ctx.allocator,
+        &bufferCI,
+        &allocationCI,
+        &buffer,
+        &allocation,
+        nullptr
+    ));
+
+    VkMemoryPropertyFlags memProperty;
+    vmaGetAllocationMemoryProperties(g_ctx.allocator, allocation, &memProperty);
+
+    if (memProperty & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+    {
+        arContext::resultCheck(vmaCopyMemoryToAllocation(
+            g_ctx.allocator,
+            pData,
+            allocation,
+            0ull,
+            dataSize
+        ));
+    }
+    else
+    {
+        auto const stagingBufferCI{ VkBufferCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = dataSize,
+            .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+        }};
+
+        auto const stagingAllocationCI{ VmaAllocationCreateInfo{
+            .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+            .usage = VMA_MEMORY_USAGE_AUTO
+        }};
+
+        VkBuffer stagingBuffer;
+        VmaAllocation stagingAllocation;
+
+        arContext::resultCheck(vmaCreateBuffer(
+            g_ctx.allocator,
+            &stagingBufferCI,
+            &stagingAllocationCI,
+            &stagingBuffer,
+            &stagingAllocation,
+            nullptr
+        ));
+
+        arContext::resultCheck(vmaCopyMemoryToAllocation(
+            g_ctx.allocator,
+            pData,
+            stagingAllocation,
+            0ull,
+            dataSize
+        ));
+
+        arContext::beginTransfer();
+
+        auto const bufferCopy{ VkBufferCopy{
+            .size = dataSize
+        }};
+
+        vkCmdCopyBuffer(
+            g_ctx.transferCommandBuffer,
+            stagingBuffer,
+            buffer,
+            1u,
+            &bufferCopy
+        );
+
+        arContext::endTransfer();
+    }
+
+    m = {
+        .pHandle = buffer,
+        .pAllocation = allocation,
+        .capacity = dataSize
+    };
 }
 
 #pragma endregion

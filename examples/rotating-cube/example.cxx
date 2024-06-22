@@ -120,9 +120,9 @@ private:
     ar::Image depthFramebuffer{ ar::ImageCreateInfo{
         .usage = ar::ImageUsage::eDepthAttachment
     }};
-    ar::Buffer vertexBuffer{ sizeof(g_cubeVertices) };
-    ar::Buffer colorBuffer{ sizeof(g_cubeColors) };
-    ar::Buffer sceneBuffer{ sizeof(sceneData) };
+    ar::DynamicBuffer vertexBuffer{ sizeof(g_cubeVertices) };
+    ar::DynamicBuffer colorBuffer{ sizeof(g_cubeColors) };
+    ar::DynamicBuffer sceneBuffer{ sizeof(sceneData) };
     ar::Pipeline 
     pipeline{ ar::GraphicsConfig{
         .shaders = {
