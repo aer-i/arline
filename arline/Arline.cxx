@@ -114,6 +114,20 @@ struct ArlineKeyboard
     b8_t keysDown[static_cast<u8_t>(ar::Key::eMaxEnum)];
 };
 
+struct ArlineButton
+{
+    b8_t isDown     : 1;
+    b8_t isPressed  : 1;
+    b8_t isReleased : 1;
+};
+
+struct ArlineMouse
+{
+    i32_t globPosX, globPosY;
+    i32_t posX, posY;
+    ArlineButton buttons[5];
+};
+
 #ifdef AR_ENABLE_INFO_CALLBACK
 static callback_t     g_infoCallback;
 #endif
@@ -122,6 +136,7 @@ static ArlineContext  g_ctx;
 static ArlineWindow   g_wnd;
 static ArlineTimer    g_timer;
 static ArlineKeyboard g_keyboard;
+static ArlineMouse    g_mouse;
 
 #ifdef AR_ENABLE_INFO_CALLBACK
 #define AR_INFO_CALLBACK(f, ...) \
@@ -278,9 +293,41 @@ static auto arWindow::create(ar::EngineConfig const& config) noexcept -> void
                     }
                     break;
                 [[unlikely]] case WM_GETMINMAXINFO:
-                    reinterpret_cast<MINMAXINFO*>(lp)->ptMinTrackSize.x = 400;
-                    reinterpret_cast<MINMAXINFO*>(lp)->ptMinTrackSize.y = 300;
+                    reinterpret_cast<PMINMAXINFO>(lp)->ptMinTrackSize.x = 300;
+                    reinterpret_cast<PMINMAXINFO>(lp)->ptMinTrackSize.y = 150;
                     return LRESULT{};
+                case WM_LBUTTONDOWN:
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eLeft)].isDown = true;
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eLeft)].isPressed = true;
+                    break;
+                case WM_LBUTTONUP:
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eLeft)].isDown = false;
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eLeft)].isReleased = true;
+                    break;
+                case WM_RBUTTONDOWN:
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isDown = true;
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isPressed = true;
+                    break;
+                case WM_RBUTTONUP:
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isDown = false;
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isReleased = true;
+                    break;
+                case WM_MBUTTONDOWN:
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isDown = true;
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isPressed = true;
+                    break;
+                case WM_MBUTTONUP:
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isDown = false;
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isReleased = true;
+                    break;
+                case WM_XBUTTONDOWN:
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isDown = true;
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isPressed = true;
+                    break;
+                case WM_XBUTTONUP:
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isDown = false;
+                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isReleased = true;
+                    break;
                 case WM_SYSKEYDOWN: [[fallthrough]];
                 case WM_SYSKEYUP:   [[fallthrough]];
                 case WM_KEYDOWN:    [[fallthrough]];
@@ -418,6 +465,12 @@ auto arline::Window::PollEvents() noexcept -> void
 {
     memset(g_keyboard.keys, 0, sizeof(g_keyboard.keys));
 
+    g_mouse.buttons[0].isPressed = g_mouse.buttons[0].isReleased = 0;
+    g_mouse.buttons[1].isPressed = g_mouse.buttons[1].isReleased = 0;
+    g_mouse.buttons[2].isPressed = g_mouse.buttons[2].isReleased = 0;
+    g_mouse.buttons[3].isPressed = g_mouse.buttons[3].isReleased = 0;
+    g_mouse.buttons[4].isPressed = g_mouse.buttons[4].isReleased = 0;
+
     for (MSG msg; ::PeekMessageW(&msg, nullptr, 0u, 0u, PM_REMOVE); )
     {
         ::TranslateMessage(&msg);
@@ -428,6 +481,17 @@ auto arline::Window::PollEvents() noexcept -> void
             g_wnd.available = false;
         }
     }
+
+    POINT cursorPos;
+    ::GetPhysicalCursorPos(&cursorPos);
+
+    g_mouse.globPosX = cursorPos.x;
+    g_mouse.globPosY = cursorPos.y;
+
+    ::ScreenToClient(g_wnd.hwnd, &cursorPos);
+
+    g_mouse.posX = cursorPos.x;
+    g_mouse.posY = cursorPos.y;
 }
 
 auto arline::Window::WaitEvents() noexcept -> void
@@ -533,6 +597,61 @@ auto arline::isKeyDown(Key key) noexcept -> b8_t
 auto arline::isKeyUp(Key key) noexcept -> b8_t
 {
     return !g_keyboard.keysDown[static_cast<u8_t>(key)];
+}
+
+auto arline::isButtonPressed(Button button) noexcept -> b8_t
+{
+    return g_mouse.buttons[static_cast<u8_t>(button)].isPressed;
+}
+
+auto arline::isButtonReleased(Button button) noexcept -> b8_t
+{
+    return g_mouse.buttons[static_cast<u8_t>(button)].isReleased;
+}
+
+auto arline::isButtonDown(Button button) noexcept -> b8_t
+{
+    return g_mouse.buttons[static_cast<u8_t>(button)].isDown;
+}
+
+auto arline::isButtonUp(Button button) noexcept -> b8_t
+{
+    return !g_mouse.buttons[static_cast<u8_t>(button)].isDown;
+}
+
+auto arline::getGlobalCursorPositionX() noexcept -> i32_t
+{
+    return g_mouse.globPosX;
+}
+
+auto arline::getGlobalCursorPositionY() noexcept -> i32_t
+{
+    return g_mouse.globPosY;
+}
+
+auto arline::getCursorPositionX() noexcept -> i32_t
+{
+    return g_mouse.posX;
+}
+
+auto arline::getCursorPositionY() noexcept -> i32_t
+{
+    return g_mouse.posY;
+}
+
+auto arline::setCursorPosition(i32_t x, i32_t y) noexcept -> void
+{
+    ::SetCursorPos(x, y);
+}
+
+auto arline::showCursor() noexcept -> void
+{
+    while (::ShowCursor(1) < 0);
+}
+
+auto arline::hideCursor() noexcept -> void
+{
+    while (::ShowCursor(0) >= 0);
 }
 
 #pragma endregion

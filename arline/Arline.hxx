@@ -91,6 +91,15 @@ namespace arline
         eMaxEnum
     };
 
+    enum class Button : u8_t
+    {
+        eLeft            = 0x00ui8,
+        eRight           = 0x01ui8,
+        eMiddle          = 0x02ui8,
+        eSide1           = 0x03ui8,
+        eSide2           = 0x04ui8
+    };
+
     enum class ShaderStage : u8_t
     {
         eVertex          = 0x01ui8,
@@ -262,15 +271,31 @@ namespace arline
         Sampler sampler;
     };
 
-    [[nodiscard]] auto getTimef()         noexcept -> f32_t;
-    [[nodiscard]] auto getTime()          noexcept -> f64_t;
-    [[nodiscard]] auto getDeltaTimef()    noexcept -> f32_t;
-    [[nodiscard]] auto getDeltaTime()     noexcept -> f64_t;
+    [[nodiscard]] auto getTimef()                 noexcept -> f32_t;
+    [[nodiscard]] auto getTime()                  noexcept -> f64_t;
+    [[nodiscard]] auto getDeltaTimef()            noexcept -> f32_t;
+    [[nodiscard]] auto getDeltaTime()             noexcept -> f64_t;
 
-    [[nodiscard]] auto isKeyPressed(Key)  noexcept -> b8_t;
-    [[nodiscard]] auto isKeyReleased(Key) noexcept -> b8_t;
-    [[nodiscard]] auto isKeyDown(Key)     noexcept -> b8_t;
-    [[nodiscard]] auto isKeyUp(Key)       noexcept -> b8_t;
+    [[nodiscard]] auto isKeyPressed(Key)          noexcept -> b8_t;
+    [[nodiscard]] auto isKeyReleased(Key)         noexcept -> b8_t;
+    [[nodiscard]] auto isKeyDown(Key)             noexcept -> b8_t;
+    [[nodiscard]] auto isKeyUp(Key)               noexcept -> b8_t;
+
+    [[nodiscard]] auto isButtonPressed(Button)    noexcept -> b8_t;
+    [[nodiscard]] auto isButtonReleased(Button)   noexcept -> b8_t;
+    [[nodiscard]] auto isButtonDown(Button)       noexcept -> b8_t;
+    [[nodiscard]] auto isButtonUp(Button)         noexcept -> b8_t;
+
+    [[nodiscard]] auto getGlobalCursorPositionX() noexcept -> i32_t;
+    [[nodiscard]] auto getGlobalCursorPositionY() noexcept -> i32_t;
+    [[nodiscard]] auto getCursorPositionX()       noexcept -> i32_t;
+    [[nodiscard]] auto getCursorPositionY()       noexcept -> i32_t;
+
+    [[nodiscard]] auto getScrollDelta()           noexcept -> i32_t;
+
+    auto setCursorPosition(i32_t x, i32_t y)      noexcept -> void;
+    auto showCursor()                             noexcept -> void;
+    auto hideCursor()                             noexcept -> void;
     
     namespace Window
     {
