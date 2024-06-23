@@ -1405,6 +1405,17 @@ arline::DynamicBuffer::DynamicBuffer(size_t capacity) noexcept
     };
 }
 
+arline::DynamicBuffer::~DynamicBuffer() noexcept
+{
+    if (m_pMapped)
+    {
+        vmaUnmapMemory(
+            g_ctx.allocator,
+            static_cast<VmaAllocation>(m.pAllocation)
+        );
+    }
+}
+
 auto arline::DynamicBuffer::write(void const* pData, size_t size, size_t offset) noexcept -> void
 {
     size = size ? size : m.capacity;

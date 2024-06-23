@@ -385,6 +385,7 @@ namespace arline
     public:
         using Buffer::Buffer;
         DynamicBuffer(size_t capacity) noexcept;
+        ~DynamicBuffer() noexcept;
 
     public:
         auto write(void const* pData, size_t size = 0ull, size_t offset = 0ull) noexcept -> void;
