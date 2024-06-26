@@ -1,39 +1,56 @@
 #include "shader.inl"
 #include <Arline.hxx>
 
-static constexpr float g_vertices[] = {
-    0.5f, 0.5f, 0.f,
-    -.5f, 0.5f, 0.f,
-    0.0f, -.5f, 0.f
-};
+static ar::Pipeline pipeline;
+static ar::Buffer vertexBuffer;
 
-class Engine : public ar::Engine
+static auto recordCommands(ar::GraphicsCommands cmd) -> void
 {
-public:
-    void onCommandsRecord(ar::GraphicsCommands const& commands) final
+    cmd.beginPresent();
     {
-        commands.beginPresent();
-        {
-            auto address{ vertexBuffer.getAddress() };
-
-            commands.pushConstant(&address, sizeof(address));
-            commands.bindPipeline(pipeline);
-            commands.draw(3u);
-        }
-        commands.endPresent();
+        cmd.pushConstant(&vertexBuffer.address, sizeof(vertexBuffer.address));
+        cmd.bindPipeline(pipeline);
+        cmd.draw(3u);
     }
+    cmd.endPresent();
+}
 
-private:
-    ar::StaticBuffer vertexBuffer{ g_vertices, sizeof(g_vertices) };
-    ar::Pipeline pipeline{ ar::GraphicsConfig{
-        .shaders = {
-            ar::Shader{ shaders::vert, sizeof(shaders::vert), ar::ShaderStage::eVertex   },
-            ar::Shader{ shaders::frag, sizeof(shaders::frag), ar::ShaderStage::eFragment }
-        }
-    }};
-};
-
-int main()
+static auto init() -> void
 {
-    return Engine{}.execute();
+    constexpr float vertices[] = {
+        0.5f, 0.5f, 0.f,
+        -.5f, 0.5f, 0.f,
+        0.0f, -.5f, 0.f
+    };
+
+    vertexBuffer.create(vertices, sizeof(vertices));
+
+    ar::Shader vert, frag;
+    vert.create(shaders::vert, sizeof(shaders::vert), ar::ShaderStage::eVertex);
+    frag.create(shaders::frag, sizeof(shaders::frag), ar::ShaderStage::eFragment);
+
+    pipeline.create(ar::GraphicsConfig{
+        .shaders = { vert, frag }
+    });
+
+    vert.destroy();
+    frag.destroy();
+}
+
+static auto teardown() -> void
+{
+    vertexBuffer.destroy();
+    pipeline.destroy();
+}
+
+auto main() -> int
+{
+    return ar::execute(ar::AppInfo{
+        .onInit = init,
+        .onDestroy = teardown,
+        .onCommandsRecord = recordCommands,
+        .title = "Triangle",
+        .width = 1280,
+        .height = 720
+    });
 }

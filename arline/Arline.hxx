@@ -2,7 +2,12 @@
 #include <string_view>
 #include <cstdint>
 
-namespace arline
+#pragma warning(push, 0)
+#include "volk.hxx"
+#include "vma.hxx"
+#pragma warning(pop)
+
+namespace ar
 {
     namespace types
     {
@@ -196,19 +201,15 @@ namespace arline
         static consteval auto Yellow()  -> ClearColor { return { 1.0f, 1.0f, 0.0f, 1.0f}; }
     };
 
-    struct EngineConfig
+    struct GraphicsCommands;
+    struct AppInfo
     {
-        [[nodiscard]] inline static auto Default() -> EngineConfig
-        {
-            return {
-                .title = "",
-                .width = 1280,
-                .height = 720,
-                .infoCallback = [](std::string_view){},
-                .errorCallback = [](std::string_view){},
-            };
-        }
-
+        void (*onInit)();
+        void (*onDestroy)();
+        void (*onCommandsRecord)(GraphicsCommands);
+        b8_t (*onResourcesUpdate)();
+        void (*onUpdate)();
+        void (*onResize)();
         std::string_view title;
         i32_t width, height;
         callback_t infoCallback;
@@ -240,7 +241,7 @@ namespace arline
         CompareOp compareOp;
     };
 
-    class Image;
+    struct Image;
     struct ImageBarrier
     {
         Image& image;
@@ -269,229 +270,132 @@ namespace arline
         u32_t height;
         ImageUsage usage;
         Sampler sampler;
+        u32_t shaderArrayElement;
     };
 
-    [[nodiscard]] auto getTimef()                 noexcept -> f32_t;
-    [[nodiscard]] auto getTime()                  noexcept -> f64_t;
-    [[nodiscard]] auto getDeltaTimef()            noexcept -> f32_t;
-    [[nodiscard]] auto getDeltaTime()             noexcept -> f64_t;
-
-    [[nodiscard]] auto isKeyPressed(Key)          noexcept -> b8_t;
-    [[nodiscard]] auto isKeyReleased(Key)         noexcept -> b8_t;
-    [[nodiscard]] auto isKeyDown(Key)             noexcept -> b8_t;
-    [[nodiscard]] auto isKeyUp(Key)               noexcept -> b8_t;
-
-    [[nodiscard]] auto isButtonPressed(Button)    noexcept -> b8_t;
-    [[nodiscard]] auto isButtonReleased(Button)   noexcept -> b8_t;
-    [[nodiscard]] auto isButtonDown(Button)       noexcept -> b8_t;
-    [[nodiscard]] auto isButtonUp(Button)         noexcept -> b8_t;
-
-    [[nodiscard]] auto getGlobalCursorPositionX() noexcept -> i32_t;
-    [[nodiscard]] auto getGlobalCursorPositionY() noexcept -> i32_t;
-    [[nodiscard]] auto getCursorPositionX()       noexcept -> i32_t;
-    [[nodiscard]] auto getCursorPositionY()       noexcept -> i32_t;
-
-    [[nodiscard]] auto getScrollDelta()           noexcept -> i32_t;
-
-    auto setCursorPosition(i32_t x, i32_t y)      noexcept -> void;
-    auto showCursor()                             noexcept -> void;
-    auto hideCursor()                             noexcept -> void;
-    
-    namespace Window
+    struct ShaderHandle
     {
-        auto PollEvents() noexcept -> void;
-        auto WaitEvents() noexcept -> void;
-        auto SetTitle(std::string_view title) noexcept -> void;
-
-        [[nodiscard]] auto GetWidth()             noexcept -> i32_t;
-        [[nodiscard]] auto GetHeight()            noexcept -> i32_t;
-        [[nodiscard]] auto GetFramebufferWidth()  noexcept -> u32_t;
-        [[nodiscard]] auto GetFramebufferHeight() noexcept -> u32_t;
-        [[nodiscard]] auto GetAspect()            noexcept -> f32_t;
-        [[nodiscard]] auto GetFramebufferAspect() noexcept -> f32_t;
+        VkPipelineShaderStageCreateInfo shaderStage;
     };
 
-    class Shader
+    struct PipelineHandle
     {
-    public:
-        inline Shader() noexcept : m{} {}
-        Shader(std::string_view pathToSpirv) noexcept;
-        Shader(u32_t const* pSpirvBinary, size_t dataSize, ShaderStage stage) noexcept;
-        ~Shader() noexcept;
-        Shader(Shader const&) = delete;
-        Shader(Shader&& other) noexcept;
-        auto operator=(Shader const&) -> Shader& = delete;
-        auto operator=(Shader&& other) noexcept -> Shader&;
+        VkPipeline handle;
+    };
 
-    private:
-        struct Members
-        {
-            void* pData[6];
-        } m;
+    struct BufferHandle
+    {
+        VkBuffer handle;
+        VmaAllocation allocation;
+        size_t capacity;
+        u64_t address;
+        u8_t* pMapped;
+    };
+
+    struct ImageHandle
+    {
+        VkImage handle;
+        VkImageView view;
+        VmaAllocation allocation;
+        Sampler sampler;
+        u32_t width;
+        u32_t height;
+        u32_t index;
     };
 
     struct GraphicsConfig
     {
-        std::initializer_list<Shader> shaders;
+        std::initializer_list<ShaderHandle> shaders;
         DepthStencilState depthStencilState;
         Topology    topology    = Topology::eTriangleList;
         PolygonMode polygonMode = PolygonMode::eFill;
         CullMode    cullMode    = CullMode::eNone;
     };
 
-    class Pipeline
-    {
-    public:
-        inline Pipeline() noexcept : m{} {}
-        Pipeline(GraphicsConfig&& config) noexcept;
-        ~Pipeline() noexcept;
-        Pipeline(Pipeline const&) = delete;
-        Pipeline(Pipeline&& other) noexcept;
-        auto operator=(Pipeline const&) -> Pipeline& = delete;
-        auto operator=(Pipeline&& other) noexcept -> Pipeline&;
+    [[nodiscard]] auto execute(AppInfo&& info)     noexcept -> i32_t;
 
+    [[nodiscard]] auto getTimef()                  noexcept -> f32_t;
+    [[nodiscard]] auto getTime()                   noexcept -> f64_t;
+    [[nodiscard]] auto getDeltaTimef()             noexcept -> f32_t;
+    [[nodiscard]] auto getDeltaTime()              noexcept -> f64_t;
+
+    [[nodiscard]] auto isKeyPressed(Key)           noexcept -> b8_t;
+    [[nodiscard]] auto isKeyReleased(Key)          noexcept -> b8_t;
+    [[nodiscard]] auto isKeyDown(Key)              noexcept -> b8_t;
+    [[nodiscard]] auto isKeyUp(Key)                noexcept -> b8_t;
+
+    [[nodiscard]] auto isButtonPressed(Button)     noexcept -> b8_t;
+    [[nodiscard]] auto isButtonReleased(Button)    noexcept -> b8_t;
+    [[nodiscard]] auto isButtonDown(Button)        noexcept -> b8_t;
+    [[nodiscard]] auto isButtonUp(Button)          noexcept -> b8_t;
+
+    [[nodiscard]] auto getGlobalCursorPositionX()  noexcept -> i32_t;
+    [[nodiscard]] auto getGlobalCursorPositionY()  noexcept -> i32_t;
+    [[nodiscard]] auto getCursorPositionX()        noexcept -> i32_t;
+    [[nodiscard]] auto getCursorPositionY()        noexcept -> i32_t;
+
+    [[nodiscard]] auto getWidth()                  noexcept -> i32_t;
+    [[nodiscard]] auto getHeight()                 noexcept -> i32_t;
+    [[nodiscard]] auto getFramebufferWidth()       noexcept -> u32_t;
+    [[nodiscard]] auto getFramebufferHeight()      noexcept -> u32_t;
+    [[nodiscard]] auto getAspectRatio()            noexcept -> f32_t;
+    [[nodiscard]] auto getFramebufferAspectRatio() noexcept -> f32_t;
+
+    auto setCursorPosition(i32_t x, i32_t y)       noexcept -> void;
+    auto setTitle(std::string_view title)          noexcept -> void;
+    auto messageBoxError(std::string_view error)   noexcept -> void;
+    auto showCursor()                              noexcept -> void;
+    auto hideCursor()                              noexcept -> void;
+    auto pollEvents()                              noexcept -> void;
+    auto waitEvents()                              noexcept -> void;
+
+    struct Shader : public ShaderHandle
+    {
+        auto create(std::string_view path) noexcept -> void;
+        auto create(u32_t const* pSpirv, size_t size, ShaderStage stage) noexcept -> void;
+        auto destroy() noexcept -> void;
+    };
+
+    struct Pipeline : public PipelineHandle
+    {
+        auto create(GraphicsConfig&& config) noexcept -> void;
+        auto destroy() noexcept -> void;
+    };
+
+    struct Buffer : public BufferHandle
+    {
+        auto create(size_t bufferCapacity) noexcept -> void;
+        auto create(void const* pData, size_t dataSize) noexcept -> void;
+        auto destroy() noexcept -> void;
+        auto write(void const* pData, size_t size = {}, size_t offset = {}) noexcept -> void;
+    };
+
+    struct Image : public ImageHandle
+    {
+        auto create(ImageCreateInfo const& imageCreateInfo) noexcept -> void;
+        auto destroy() noexcept -> void;
+    };
+
+    struct GraphicsCommands
+    {
     private:
-        struct Members
-        {
-            void* pHandle;
-        } m;
-    };
-
-    class Buffer
-    {
-    public:
-        inline Buffer() noexcept : m{} {}
-        ~Buffer() noexcept;
-        Buffer(Buffer const&) = delete;
-        Buffer(Buffer&& other) noexcept;
-        auto operator=(Buffer const&) -> Buffer& = delete;
-        auto operator=(Buffer&& other) noexcept -> Buffer&;
-
-    public:
-        [[nodiscard]] auto getCapacity() const noexcept { return m.capacity; }
-        [[nodiscard]] auto getAddress() const noexcept -> u64_t;
-
-    protected:
-        struct Members
-        {
-            void* pHandle;
-            void* pAllocation;
-            size_t capacity;
-        } m;
-    };
-
-    class DynamicBuffer : public Buffer
-    {
-    public:
-        using Buffer::Buffer;
-        DynamicBuffer(size_t capacity) noexcept;
-        ~DynamicBuffer() noexcept;
-
-    public:
-        auto write(void const* pData, size_t size = 0ull, size_t offset = 0ull) noexcept -> void;
-
-    private:
-        u8_t* m_pMapped;
-    };
-
-    class StaticBuffer : public Buffer
-    {
-    public:
-        using Buffer::Buffer;
-        StaticBuffer(void const* pData, size_t dataSize);
-    };
-
-    class Image
-    {
-    public:
-        inline Image() : m{} {}
-        ~Image() noexcept;
-        Image(Image const&) = delete;
-        Image(Image&& other) noexcept;
-        auto operator=(Image const&) -> Image& = delete;
-        auto operator=(Image&& other) noexcept -> Image&;
-
-    public:
-        Image(ImageCreateInfo const& imageCreateInfo) noexcept;
-
-    private:
-        auto makeResident(Sampler, u32_t) noexcept -> void;
-
-    public:
-        [[nodiscard]] auto getWidth()  const noexcept { return m.width;  }
-        [[nodiscard]] auto getHeight() const noexcept { return m.height; }
-        [[nodiscard]] auto getIndex()  const noexcept { return m.index;  }
-
-    private:
-        struct Members
-        {
-            void* pHandle;
-            void* pView;
-            void* pAllocation;
-            Sampler sampler;
-            u32_t width;
-            u32_t height;
-            u32_t index;
-        } m;
-    };
-
-    class GraphicsCommands
-    {
-    public:
-        GraphicsCommands() noexcept;
-        ~GraphicsCommands() noexcept;
-        GraphicsCommands(GraphicsCommands const&) = delete;
-        GraphicsCommands(GraphicsCommands&&) = delete;
-        auto operator=(GraphicsCommands const&) -> GraphicsCommands& = delete;
-        auto operator=(GraphicsCommands&&) -> GraphicsCommands& = delete;
-
-    public:
-        operator b8_t() noexcept;
-
-    public:
         using ColorAttachments = std::initializer_list<ColorAttachment>;
-        auto barrier(ImageBarrier barrier) const noexcept -> void;
-        auto beginRendering(ColorAttachments, DepthAttachment = {}) const noexcept -> void;
-        auto endRendering() const noexcept -> void;
-        auto beginPresent() const noexcept -> void;
-        auto endPresent() const noexcept -> void;
-        auto bindPipeline(Pipeline const& pipeline) const noexcept -> void;
-        auto draw(u32_t vertexCount, u32_t instanceCount = 1u, u32_t vertex = 0u, u32_t instance = 0u) const noexcept -> void;
-        auto drawIndexed(u32_t indexCount, u32_t instanceCount = 1u, u32_t index = 0u, i32_t vertexOffset = 0, u32_t instance = 0u) const noexcept -> void;
-        auto drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = s_id) const noexcept -> void;
-        auto drawIndexedIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = s_idi) const noexcept -> void;
-        auto drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = s_id) const noexcept -> void;
-        auto drawIndexedIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = s_idi) const noexcept -> void;
-        auto pushConstant(void const* pData, u32_t size) const noexcept -> void;
-
-    private:
         static constexpr u32_t s_id = sizeof(DrawIndirectCommand);
         static constexpr u32_t s_idi = sizeof(DrawIndexedIndirectCommand);
-        struct Members
-        {
-            u32_t id;
-        } m;
-    };
-
-    class Engine
-    {
-    public:
-        Engine(EngineConfig const& config = EngineConfig::Default()) noexcept;
-        ~Engine() noexcept;
-        Engine(Engine const&) = delete;
-        Engine(Engine&&) = delete;
-        auto operator=(Engine const&) -> Engine& = delete;
-        auto operator=(Engine&&) -> Engine& = delete;
-
-    protected:
-        virtual auto onResize() -> void { }
-        virtual auto onUpdate() -> void { Window::PollEvents(); }
-        virtual auto onResourcesUpdate() -> b8_t { return false; }
-        virtual auto onCommandsRecord(GraphicsCommands const&) -> void = 0;
 
     public:
-        auto execute() noexcept -> int;
+        auto barrier(ImageBarrier barrier) noexcept -> void;
+        auto beginRendering(ColorAttachments, DepthAttachment = {}) noexcept -> void;
+        auto endRendering() noexcept -> void;
+        auto beginPresent() noexcept -> void;
+        auto endPresent() noexcept -> void;
+        auto bindPipeline(Pipeline const& pipeline) noexcept -> void;
+        auto draw(u32_t vertexCount, u32_t instanceCount = 1u, u32_t vertex = 0u, u32_t instance = 0u) noexcept -> void;
+        auto drawIndexed(u32_t indexCount, u32_t instanceCount = 1u, u32_t index = 0u, i32_t vertexOffset = 0, u32_t instance = 0u) noexcept -> void;
+        auto drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = s_id) noexcept -> void;
+        auto drawIndexedIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = s_idi) noexcept -> void;
+        auto drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = s_id) noexcept -> void;
+        auto drawIndexedIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = s_idi) noexcept -> void;
+        auto pushConstant(void const* pData, u32_t size) noexcept -> void;
     };
 }
-
-namespace ar = arline;

@@ -1,20 +1,15 @@
-#include "Arline.hxx"
-
+#define VOLK_IMPLEMENTATION
 #define VMA_IMPLEMENTATION
 
 #ifdef _WIN32
 #   define VK_USE_PLATFORM_WIN32_KHR
 #   include <dwmapi.h>
-#   pragma comment(lib, "Dwmapi")
+#   pragma comment(lib, "dwmapi")
 #endif
 
-#include <vulkan/vulkan.h>
+#include "Arline.hxx"
 
-#pragma warning(push, 0)
-#include "vma.hxx"
-#pragma warning(pop)
-
-using namespace arline::types;
+using namespace ar::types;
 
 #pragma region Declarations
 
@@ -66,11 +61,11 @@ struct ArlineContext
     VkCommandPool transferCommandPool;
     VkCommandBuffer transferCommandBuffer;
     VmaAllocator allocator;
-    u32_t allocatedSampledImageCount;
 
     u32_t imageCount;
     u32_t unifiedPresent;
     u32_t imageIndex;
+    u32_t cmdIndex;
     VkFence fence;
     VkSemaphore acquireSemaphore;
     VkSemaphore graphicsSemaphore;
@@ -153,7 +148,7 @@ namespace arTimer
 
 namespace arWindow
 {
-    static auto create(ar::EngineConfig const&) noexcept -> void;
+    static auto create(ar::AppInfo const&) noexcept -> void;
     static auto teardown() noexcept -> void;
 }
 
@@ -178,14 +173,29 @@ namespace arContext
 }
 
 #pragma endregion
-#pragma region Engine
+#pragma region Execution
 
-arline::Engine::Engine(EngineConfig const& config) noexcept
+auto ar::execute(AppInfo&& info) noexcept -> i32_t
 {
+    if (!info.onResize)
+        info.onResize = []{};
+
+    if (!info.onResourcesUpdate)
+        info.onResourcesUpdate = []{ return false; };
+
+    if (!info.onUpdate)
+        info.onUpdate = []{ ar::pollEvents(); };
+
+    if (!info.infoCallback)
+        info.infoCallback = [](std::string_view){};
+
+    if (!info.errorCallback)
+        info.errorCallback = [](std::string_view){};
+
     g_ctx = ArlineContext{
         #ifdef AR_ENABLE_INFO_CALLBACK
         .messenger = {
-            .enableValidationLayers = config.enableValidationLayers
+            .enableValidationLayers = info.enableValidationLayers
         },
         #endif
         .submitInfo = {
@@ -197,60 +207,78 @@ arline::Engine::Engine(EngineConfig const& config) noexcept
     };
 
     #ifdef AR_ENABLE_INFO_CALLBACK
-    g_infoCallback = config.infoCallback;
+    g_infoCallback = info.infoCallback;
     #endif
-    g_errorCallback = config.errorCallback;
+    g_errorCallback = info.errorCallback;
 
-    arWindow::create(config);
+    arWindow::create(info);
     arContext::create();
     arTimer::create();
-}
 
-arline::Engine::~Engine() noexcept
-{
-    arContext::teardown();
-    arWindow::teardown();
-}
+    info.onInit();
 
-auto arline::Engine::execute() noexcept -> int
-{
-    auto recordCommands{ [this]
+    auto record{ [&info]
     {
-        for (auto commands{ GraphicsCommands{} }; commands; )
+        auto const commandBufferBI{ VkCommandBufferBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+        }};
+
+        arContext::resultCheck(vkResetCommandPool(g_ctx.device, g_ctx.graphicsCommandPool, {}));
+
+        for (g_ctx.cmdIndex = u32_t{}; g_ctx.cmdIndex < g_ctx.imageCount; ++g_ctx.cmdIndex)
         {
-            this->onCommandsRecord(commands);
+            arContext::resultCheck(
+                vkBeginCommandBuffer(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, &commandBufferBI)
+            );
+
+            vkCmdBindDescriptorSets(
+                g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                g_ctx.pipelineLayout,
+                0u,
+                1u,
+                &g_ctx.descriptorSet,
+                0u,
+                nullptr
+            );
+
+            info.onCommandsRecord(ar::GraphicsCommands{});
+
+            arContext::resultCheck(
+                vkEndCommandBuffer(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer)
+            );
         }
     }};
     
-    recordCommands();
+    record();
 
-    while (true)
+    while (g_wnd.available) [[likely]]
     {
         if (!arContext::acquireImage()) [[unlikely]]
         {
-            this->onResize();
-            recordCommands();
+            info.onResize();
+            record();
         }
 
-        if (this->onResourcesUpdate()) [[unlikely]]
+        if (info.onResourcesUpdate()) [[unlikely]]
         {
-            recordCommands();
+            record();
         }
 
         if (!arContext::presentFrame()) [[unlikely]]
         {
-            this->onResize();
-            recordCommands();
+            info.onResize();
+            record();
         }
 
-        this->onUpdate();
+        info.onUpdate();
         arTimer::update();
-
-        if (!g_wnd.available) [[unlikely]]
-            break;
     }
 
     vkDeviceWaitIdle(g_ctx.device);
+    info.onDestroy();
+    arContext::teardown();
+    arWindow::teardown();
 
     return {};
 }
@@ -259,7 +287,7 @@ auto arline::Engine::execute() noexcept -> int
 #pragma region Window Win32
 #ifdef _WIN32
 
-static auto arWindow::create(ar::EngineConfig const& config) noexcept -> void
+static auto arWindow::create(ar::AppInfo const& config) noexcept -> void
 {
     auto error{ "Window creation failed" };
 
@@ -284,7 +312,7 @@ static auto arWindow::create(ar::EngineConfig const& config) noexcept -> void
 
                     while (!g_wnd.width || !g_wnd.height)
                     {
-                        ar::Window::WaitEvents();
+                        ar::waitEvents();
 
                         if (!g_wnd.available)
                         {
@@ -312,19 +340,19 @@ static auto arWindow::create(ar::EngineConfig const& config) noexcept -> void
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isDown = false;
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isReleased = true;
                     break;
-                case WM_MBUTTONDOWN:
+                [[unlikely]] case WM_MBUTTONDOWN:
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isDown = true;
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isPressed = true;
                     break;
-                case WM_MBUTTONUP:
+                [[unlikely]] case WM_MBUTTONUP:
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isDown = false;
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isReleased = true;
                     break;
-                case WM_XBUTTONDOWN:
+                [[unlikely]] case WM_XBUTTONDOWN:
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isDown = true;
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isPressed = true;
                     break;
-                case WM_XBUTTONUP:
+                [[unlikely]] case WM_XBUTTONUP:
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isDown = false;
                     g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isReleased = true;
                     break;
@@ -410,7 +438,6 @@ static auto arWindow::create(ar::EngineConfig const& config) noexcept -> void
         },
         .hInstance = g_wnd.hinstance,
         .hCursor = ::LoadCursorA(nullptr, IDC_ARROW),
-        .hbrBackground = static_cast<HBRUSH>(::GetStockObject(BLACK_BRUSH)),
         .lpszClassName = L"ar",
     }};
 
@@ -461,7 +488,7 @@ static auto arWindow::teardown() noexcept -> void
     AR_INFO_CALLBACK("Destroyed Win32 Window")
 }
 
-auto arline::Window::PollEvents() noexcept -> void
+auto ar::pollEvents() noexcept -> void
 {
     memset(g_keyboard.keys, 0, sizeof(g_keyboard.keys));
 
@@ -494,43 +521,48 @@ auto arline::Window::PollEvents() noexcept -> void
     g_mouse.posY = cursorPos.y;
 }
 
-auto arline::Window::WaitEvents() noexcept -> void
+auto ar::waitEvents() noexcept -> void
 {
     ::WaitMessage();
-    Window::PollEvents();
+    ar::pollEvents();
 }
 
-auto arline::Window::SetTitle(std::string_view title) noexcept -> void
+auto ar::setTitle(std::string_view title) noexcept -> void
 {
     ::SetWindowTextA(g_wnd.hwnd, title.data());
 }
 
-auto arline::Window::GetWidth() noexcept -> i32_t
+auto ar::messageBoxError(std::string_view error) noexcept -> void
+{
+    ::MessageBoxA(nullptr, error.data(), "Error", MB_ICONERROR);
+}
+
+auto ar::getWidth() noexcept -> i32_t
 {
     return g_wnd.width;
 }
 
-auto arline::Window::GetHeight() noexcept -> i32_t
+auto ar::getHeight() noexcept -> i32_t
 {
     return g_wnd.height;
 }
 
-auto arline::Window::GetFramebufferWidth() noexcept -> u32_t
+auto ar::getFramebufferWidth() noexcept -> u32_t
 {
     return g_ctx.surfaceExtent.width;
 }
 
-auto arline::Window::GetFramebufferHeight() noexcept -> u32_t
+auto ar::getFramebufferHeight() noexcept -> u32_t
 {
     return g_ctx.surfaceExtent.height;
 }
 
-auto arline::Window::GetAspect() noexcept -> f32_t
+auto ar::getAspectRatio() noexcept -> f32_t
 {
     return static_cast<f32_t>(g_wnd.width) / g_wnd.height;
 }
 
-auto arline::Window::GetFramebufferAspect() noexcept -> f32_t
+auto ar::getFramebufferAspectRatio() noexcept -> f32_t
 {
     return static_cast<f32_t>(g_ctx.surfaceExtent.width) / g_ctx.surfaceExtent.height;
 }
@@ -553,7 +585,7 @@ auto arTimer::update() noexcept -> void
     g_timer.previousTime = now;
 }
 
-auto arline::getTime() noexcept -> f64_t
+auto ar::getTime() noexcept -> f64_t
 {
     LARGE_INTEGER value;
     ::QueryPerformanceCounter(&value);
@@ -561,17 +593,17 @@ auto arline::getTime() noexcept -> f64_t
     return static_cast<f64_t>(value.QuadPart - g_timer.timeOffset.QuadPart) / g_timer.frequency.QuadPart;
 }
 
-auto arline::getTimef() noexcept -> f32_t
+auto ar::getTimef() noexcept -> f32_t
 {
     return static_cast<f32_t>(ar::getTime());
 }
 
-auto arline::getDeltaTime() noexcept -> f64_t
+auto ar::getDeltaTime() noexcept -> f64_t
 {
     return g_timer.deltaTime;
 }
 
-auto arline::getDeltaTimef() noexcept -> f32_t
+auto ar::getDeltaTimef() noexcept -> f32_t
 {
     return static_cast<f32_t>(g_timer.deltaTime);
 }
@@ -579,77 +611,77 @@ auto arline::getDeltaTimef() noexcept -> f32_t
 #pragma endregion
 #pragma region Input
 
-auto arline::isKeyPressed(Key key) noexcept -> b8_t
+auto ar::isKeyPressed(Key key) noexcept -> b8_t
 {
     return g_keyboard.keys[static_cast<u8_t>(key)].isPressed;
 }
 
-auto arline::isKeyReleased(Key key) noexcept -> b8_t
+auto ar::isKeyReleased(Key key) noexcept -> b8_t
 {
     return g_keyboard.keys[static_cast<u8_t>(key)].isReleased;
 }
 
-auto arline::isKeyDown(Key key) noexcept -> b8_t
+auto ar::isKeyDown(Key key) noexcept -> b8_t
 {
     return g_keyboard.keysDown[static_cast<u8_t>(key)];
 }
 
-auto arline::isKeyUp(Key key) noexcept -> b8_t
+auto ar::isKeyUp(Key key) noexcept -> b8_t
 {
     return !g_keyboard.keysDown[static_cast<u8_t>(key)];
 }
 
-auto arline::isButtonPressed(Button button) noexcept -> b8_t
+auto ar::isButtonPressed(Button button) noexcept -> b8_t
 {
     return g_mouse.buttons[static_cast<u8_t>(button)].isPressed;
 }
 
-auto arline::isButtonReleased(Button button) noexcept -> b8_t
+auto ar::isButtonReleased(Button button) noexcept -> b8_t
 {
     return g_mouse.buttons[static_cast<u8_t>(button)].isReleased;
 }
 
-auto arline::isButtonDown(Button button) noexcept -> b8_t
+auto ar::isButtonDown(Button button) noexcept -> b8_t
 {
     return g_mouse.buttons[static_cast<u8_t>(button)].isDown;
 }
 
-auto arline::isButtonUp(Button button) noexcept -> b8_t
+auto ar::isButtonUp(Button button) noexcept -> b8_t
 {
     return !g_mouse.buttons[static_cast<u8_t>(button)].isDown;
 }
 
-auto arline::getGlobalCursorPositionX() noexcept -> i32_t
+auto ar::getGlobalCursorPositionX() noexcept -> i32_t
 {
     return g_mouse.globPosX;
 }
 
-auto arline::getGlobalCursorPositionY() noexcept -> i32_t
+auto ar::getGlobalCursorPositionY() noexcept -> i32_t
 {
     return g_mouse.globPosY;
 }
 
-auto arline::getCursorPositionX() noexcept -> i32_t
+auto ar::getCursorPositionX() noexcept -> i32_t
 {
     return g_mouse.posX;
 }
 
-auto arline::getCursorPositionY() noexcept -> i32_t
+auto ar::getCursorPositionY() noexcept -> i32_t
 {
     return g_mouse.posY;
 }
 
-auto arline::setCursorPosition(i32_t x, i32_t y) noexcept -> void
+auto ar::setCursorPosition(i32_t x, i32_t y) noexcept -> void
 {
     ::SetCursorPos(x, y);
 }
 
-auto arline::showCursor() noexcept -> void
+auto ar::showCursor() noexcept -> void
 {
     while (::ShowCursor(1) < 0);
 }
 
-auto arline::hideCursor() noexcept -> void
+auto ar::hideCursor() noexcept -> void
 {
     while (::ShowCursor(0) >= 0);
 }
@@ -657,52 +689,44 @@ auto arline::hideCursor() noexcept -> void
 #pragma endregion
 #pragma region Graphics Commands
 
-arline::GraphicsCommands::GraphicsCommands() noexcept
-    : m{
-        .id = g_ctx.imageCount
-    }
-{
-    auto const commandBufferBI{ VkCommandBufferBeginInfo{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
-    }};
+// ar::GraphicsCommands::GraphicsCommands() noexcept
+// {
+//     auto const commandBufferBI{ VkCommandBufferBeginInfo{
+//         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+//     }};
 
-    arContext::resultCheck(vkResetCommandPool(g_ctx.device, g_ctx.graphicsCommandPool, {}));
+//     arContext::resultCheck(vkResetCommandPool(g_ctx.device, g_ctx.graphicsCommandPool, {}));
 
-    for (auto i{ g_ctx.imageCount }; i--; )
-    {
-        arContext::resultCheck(
-            vkBeginCommandBuffer(g_ctx.images[i].graphicsCommandBuffer, &commandBufferBI)
-        );
+//     for (auto i{ g_ctx.imageCount }; i--; )
+//     {
+//         arContext::resultCheck(
+//             vkBeginCommandBuffer(g_ctx.images[i].graphicsCommandBuffer, &commandBufferBI)
+//         );
 
-        vkCmdBindDescriptorSets(
-            g_ctx.images[i].graphicsCommandBuffer,
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            g_ctx.pipelineLayout,
-            0u,
-            1u,
-            &g_ctx.descriptorSet,
-            0u,
-            nullptr
-        );
-    }
-}
+//         vkCmdBindDescriptorSets(
+//             g_ctx.images[i].graphicsCommandBuffer,
+//             VK_PIPELINE_BIND_POINT_GRAPHICS,
+//             g_ctx.pipelineLayout,
+//             0u,
+//             1u,
+//             &g_ctx.descriptorSet,
+//             0u,
+//             nullptr
+//         );
+//     }
+// }
 
-arline::GraphicsCommands::~GraphicsCommands() noexcept
-{
-    for (auto i{ g_ctx.imageCount }; i--; )
-    {
-        arContext::resultCheck(
-            vkEndCommandBuffer(g_ctx.images[i].graphicsCommandBuffer)
-        );
-    }
-}
+// ar::GraphicsCommands::~GraphicsCommands() noexcept
+// {
+//     for (auto i{ g_ctx.imageCount }; i--; )
+//     {
+//         arContext::resultCheck(
+//             vkEndCommandBuffer(g_ctx.images[i].graphicsCommandBuffer)
+//         );
+//     }
+// }
 
-arline::GraphicsCommands::operator b8_t() noexcept
-{
-    return static_cast<b8_t>(m.id--);
-}
-
-auto arline::GraphicsCommands::barrier(ImageBarrier barrier) const noexcept -> void
+auto ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept -> void
 {
     VkImageAspectFlags constexpr aspects[] = { VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_DEPTH_BIT };
     auto usingDepth{ false };
@@ -766,13 +790,10 @@ auto arline::GraphicsCommands::barrier(ImageBarrier barrier) const noexcept -> v
         .pImageMemoryBarriers = &imageBarrier
     }};
 
-    vkCmdPipelineBarrier2(g_ctx.images[m.id].graphicsCommandBuffer, &dependency);
+    vkCmdPipelineBarrier2(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, &dependency);
 }
 
-auto arline::GraphicsCommands::beginRendering(
-    ColorAttachments colorAttachments,
-    DepthAttachment depthAttachment
-) const noexcept -> void
+auto ar::GraphicsCommands::beginRendering(ColorAttachments colorAttachments, DepthAttachment depthAttachment) noexcept -> void
 {
     VkRenderingAttachmentInfo attachments[9];
 
@@ -782,7 +803,7 @@ auto arline::GraphicsCommands::beginRendering(
 
         attachments[i] = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = reinterpret_cast<VkImageView*>(&attachment->image)[1],
+            .imageView = attachment->image.view,
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .loadOp = static_cast<VkAttachmentLoadOp>(attachment->loadOp),
             .storeOp = static_cast<VkAttachmentStoreOp>(attachment->storeOp),
@@ -803,7 +824,7 @@ auto arline::GraphicsCommands::beginRendering(
     {
         attachments[8] = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = reinterpret_cast<VkImageView*>(depthAttachment.pImage)[1],
+            .imageView = depthAttachment.pImage->view,
             .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
             .loadOp = static_cast<VkAttachmentLoadOp>(depthAttachment.loadOp),
             .storeOp = static_cast<VkAttachmentStoreOp>(depthAttachment.storeOp),
@@ -819,8 +840,8 @@ auto arline::GraphicsCommands::beginRendering(
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .renderArea = {
             .extent = {
-                .width = colorAttachments.begin()->image.getWidth(),
-                .height = colorAttachments.begin()->image.getHeight()
+                .width = colorAttachments.begin()->image.width,
+                .height = colorAttachments.begin()->image.height
             }
         },
         .layerCount = 1u,
@@ -843,17 +864,17 @@ auto arline::GraphicsCommands::beginRendering(
         .maxDepth = 1.f
     }};
 
-    vkCmdBeginRendering(g_ctx.images[m.id].graphicsCommandBuffer, &renderingInfo);
-    vkCmdSetScissor(g_ctx.images[m.id].graphicsCommandBuffer, 0u, 1u, &scissor);
-    vkCmdSetViewport(g_ctx.images[m.id].graphicsCommandBuffer, 0u, 1u, &viewport);
+    vkCmdBeginRendering(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, &renderingInfo);
+    vkCmdSetScissor(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, 0u, 1u, &scissor);
+    vkCmdSetViewport(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, 0u, 1u, &viewport);
 }
 
-auto arline::GraphicsCommands::endRendering() const noexcept -> void
+auto ar::GraphicsCommands::endRendering() noexcept -> void
 {
-    vkCmdEndRendering(g_ctx.images[m.id].graphicsCommandBuffer);
+    vkCmdEndRendering(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer);
 }
 
-auto arline::GraphicsCommands::beginPresent() const noexcept -> void
+auto ar::GraphicsCommands::beginPresent() noexcept -> void
 {
     auto const imageBarrier{ VkImageMemoryBarrier2{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -864,7 +885,7 @@ auto arline::GraphicsCommands::beginPresent() const noexcept -> void
         .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = g_ctx.images[m.id].image,
+        .image = g_ctx.images[g_ctx.cmdIndex].image,
         .subresourceRange = {
             .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .levelCount = 1u,
@@ -881,7 +902,7 @@ auto arline::GraphicsCommands::beginPresent() const noexcept -> void
 
     auto const colorAttachment{ VkRenderingAttachmentInfo{
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView = g_ctx.images[m.id].view,
+        .imageView = g_ctx.images[g_ctx.cmdIndex].view,
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE
@@ -911,13 +932,13 @@ auto arline::GraphicsCommands::beginPresent() const noexcept -> void
         .maxDepth = 1.f
     }};
 
-    vkCmdPipelineBarrier2(g_ctx.images[m.id].graphicsCommandBuffer, &dependency);
-    vkCmdBeginRendering(g_ctx.images[m.id].graphicsCommandBuffer, &renderingInfo);
-    vkCmdSetScissor(g_ctx.images[m.id].graphicsCommandBuffer, 0u, 1u, &scissor);
-    vkCmdSetViewport(g_ctx.images[m.id].graphicsCommandBuffer, 0u, 1u, &viewport);
+    vkCmdPipelineBarrier2(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, &dependency);
+    vkCmdBeginRendering(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, &renderingInfo);
+    vkCmdSetScissor(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, 0u, 1u, &scissor);
+    vkCmdSetViewport(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, 0u, 1u, &viewport);
 }
 
-auto arline::GraphicsCommands::endPresent() const noexcept -> void
+auto ar::GraphicsCommands::endPresent() noexcept -> void
 {
     VkImageMemoryBarrier2 imageBarrier;
 
@@ -933,7 +954,7 @@ auto arline::GraphicsCommands::endPresent() const noexcept -> void
             .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = g_ctx.images[m.id].image,
+            .image = g_ctx.images[g_ctx.cmdIndex].image,
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .levelCount = 1u,
@@ -951,7 +972,7 @@ auto arline::GraphicsCommands::endPresent() const noexcept -> void
             .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             .srcQueueFamilyIndex = g_ctx.graphicsFamily,
             .dstQueueFamilyIndex = g_ctx.presentFamily,
-            .image = g_ctx.images[m.id].image,
+            .image = g_ctx.images[g_ctx.cmdIndex].image,
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .levelCount = 1u,
@@ -967,23 +988,23 @@ auto arline::GraphicsCommands::endPresent() const noexcept -> void
         .pImageMemoryBarriers = &imageBarrier
     }};
 
-    vkCmdEndRendering(g_ctx.images[m.id].graphicsCommandBuffer);
-    vkCmdPipelineBarrier2(g_ctx.images[m.id].graphicsCommandBuffer, &dependency);
+    vkCmdEndRendering(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer);
+    vkCmdPipelineBarrier2(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, &dependency);
 }
 
-auto arline::GraphicsCommands::bindPipeline(Pipeline const& pipeline) const noexcept -> void
+auto ar::GraphicsCommands::bindPipeline(Pipeline const& pipeline) noexcept -> void
 {
     vkCmdBindPipeline(
-        g_ctx.images[m.id].graphicsCommandBuffer,
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
-        *reinterpret_cast<VkPipeline const*>(&pipeline)
+        pipeline.handle
     );
 }
 
-auto arline::GraphicsCommands::draw(u32_t vertexCount, u32_t instanceCount, u32_t vertex, u32_t instance) const noexcept -> void
+auto ar::GraphicsCommands::draw(u32_t vertexCount, u32_t instanceCount, u32_t vertex, u32_t instance) noexcept -> void
 {
     vkCmdDraw(
-        g_ctx.images[m.id].graphicsCommandBuffer,
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
         vertexCount,
         instanceCount,
         vertex,
@@ -991,10 +1012,10 @@ auto arline::GraphicsCommands::draw(u32_t vertexCount, u32_t instanceCount, u32_
     );
 }
 
-auto arline::GraphicsCommands::drawIndexed(u32_t indexCount, u32_t instanceCount, u32_t index, i32_t vertexOffset, u32_t instance) const noexcept -> void
+auto ar::GraphicsCommands::drawIndexed(u32_t indexCount, u32_t instanceCount, u32_t index, i32_t vertexOffset, u32_t instance) noexcept -> void
 {
     vkCmdDrawIndexed(
-        g_ctx.images[m.id].graphicsCommandBuffer,
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
         indexCount,
         instanceCount,
         index,
@@ -1003,58 +1024,58 @@ auto arline::GraphicsCommands::drawIndexed(u32_t indexCount, u32_t instanceCount
     );
 }
 
-auto arline::GraphicsCommands::drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride) const noexcept -> void
+auto ar::GraphicsCommands::drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride) noexcept -> void
 {
     vkCmdDrawIndirect(
-        g_ctx.images[m.id].graphicsCommandBuffer,
-        *reinterpret_cast<VkBuffer const*>(&buffer),
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
+        buffer.handle,
         0ull,
         drawCount,
         stride
     );
 }
 
-auto arline::GraphicsCommands::drawIndexedIndirect(Buffer const &buffer, u32_t drawCount, u32_t stride) const noexcept -> void
+auto ar::GraphicsCommands::drawIndexedIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride) noexcept -> void
 {
     vkCmdDrawIndexedIndirect(
-        g_ctx.images[m.id].graphicsCommandBuffer,
-        *reinterpret_cast<VkBuffer const*>(&buffer),
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
+        buffer.handle,
         0ull,
         drawCount,
         stride
     );
 }
 
-auto arline::GraphicsCommands::drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride) const noexcept -> void
+auto ar::GraphicsCommands::drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride) noexcept -> void
 {
     vkCmdDrawIndirectCount(
-        g_ctx.images[m.id].graphicsCommandBuffer,
-        *reinterpret_cast<VkBuffer const*>(&buffer),
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
+        buffer.handle,
         0ull,
-        *reinterpret_cast<VkBuffer const*>(&countBuffer),
+        countBuffer.handle,
         0ull,
         maxDraws,
         stride
     );
 }
 
-auto arline::GraphicsCommands::drawIndexedIndirectCount(Buffer const &buffer, Buffer const &countBuffer, u32_t maxDraws, u32_t stride) const noexcept -> void
+auto ar::GraphicsCommands::drawIndexedIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride) noexcept -> void
 {
     vkCmdDrawIndexedIndirectCount(
-        g_ctx.images[m.id].graphicsCommandBuffer,
-        *reinterpret_cast<VkBuffer const*>(&buffer),
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
+        buffer.handle,
         0ull,
-        *reinterpret_cast<VkBuffer const*>(&countBuffer),
+        countBuffer.handle,
         0ull,
         maxDraws,
         stride
     );
 }
 
-auto arline::GraphicsCommands::pushConstant(void const* pData, u32_t size) const noexcept -> void
+auto ar::GraphicsCommands::pushConstant(void const* pData, u32_t size) noexcept -> void
 {
     vkCmdPushConstants(
-        g_ctx.images[m.id].graphicsCommandBuffer,
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
         g_ctx.pipelineLayout,
         VK_SHADER_STAGE_VERTEX_BIT,
         0u,
@@ -1066,26 +1087,23 @@ auto arline::GraphicsCommands::pushConstant(void const* pData, u32_t size) const
 #pragma endregion
 #pragma region Shaders
 
-arline::Shader::Shader(std::string_view pathToSpirv) noexcept
-    : m{}
+auto ar::Shader::create(std::string_view path) noexcept -> void
 {
-    static_assert(sizeof(*this) == sizeof(VkPipelineShaderStageCreateInfo));
-
     auto error{ [&]
     {
         char errorMessage[1024];
-        std::snprintf(errorMessage, sizeof(errorMessage), "Failed to load shader: [%s]", pathToSpirv.data());
+        std::snprintf(errorMessage, sizeof(errorMessage), "Failed to load shader: [%s]", path.data());
 
         g_errorCallback(errorMessage);
     }};
 
     VkShaderStageFlagBits stageFlagBits;
 
-    if (pathToSpirv.ends_with(".vert.spv"))
+    if (path.ends_with(".vert.spv"))
     {
         stageFlagBits = VK_SHADER_STAGE_VERTEX_BIT;
     }
-    else if (pathToSpirv.ends_with(".frag.spv"))
+    else if (path.ends_with(".frag.spv"))
     {
         stageFlagBits = VK_SHADER_STAGE_FRAGMENT_BIT;
     }
@@ -1095,16 +1113,14 @@ arline::Shader::Shader(std::string_view pathToSpirv) noexcept
         error();
     }
 
-    auto shaderStageCI{ reinterpret_cast<VkPipelineShaderStageCreateInfo*>(this)};
-
-    *shaderStageCI = {
+    shaderStage = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = stageFlagBits,
         .pName = "main"
     };
 
     auto const file{ ::CreateFileA(
-        pathToSpirv.data(),
+        path.data(),
         GENERIC_READ,
         FILE_SHARE_READ,
         nullptr,
@@ -1132,6 +1148,7 @@ arline::Shader::Shader(std::string_view pathToSpirv) noexcept
     {
         error();
     }
+
     ::CloseHandle(file);
 
     auto const shaderModuleCI{ VkShaderModuleCreateInfo{
@@ -1140,17 +1157,19 @@ arline::Shader::Shader(std::string_view pathToSpirv) noexcept
         .pCode = reinterpret_cast<u32_t*>(pBuffer)
     }};
 
-    arContext::resultCheck(vkCreateShaderModule(g_ctx.device, &shaderModuleCI, nullptr, &shaderStageCI->module));
+    arContext::resultCheck(vkCreateShaderModule(
+        g_ctx.device,
+        &shaderModuleCI,
+        nullptr,
+        &shaderStage.module
+    ));
 
     delete[] pBuffer;
 }
 
-arline::Shader::Shader(u32_t const* pSpirvBinary, size_t dataSize, ShaderStage stage) noexcept
-    : m{}
+auto ar::Shader::create(u32_t const* pSpirv, size_t size, ShaderStage stage) noexcept -> void
 {
-    auto shaderStageCI{ reinterpret_cast<VkPipelineShaderStageCreateInfo*>(this)};
-
-    *shaderStageCI = {
+    shaderStage = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = static_cast<VkShaderStageFlagBits>(stage),
         .pName = "main"
@@ -1158,43 +1177,27 @@ arline::Shader::Shader(u32_t const* pSpirvBinary, size_t dataSize, ShaderStage s
 
     auto const shaderModuleCI{ VkShaderModuleCreateInfo{
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = dataSize,
-        .pCode = pSpirvBinary
+        .codeSize = size,
+        .pCode = pSpirv
     }};
 
-    arContext::resultCheck(vkCreateShaderModule(g_ctx.device, &shaderModuleCI, nullptr, &shaderStageCI->module));
+    arContext::resultCheck(vkCreateShaderModule(
+        g_ctx.device,
+        &shaderModuleCI,
+        nullptr,
+        &shaderStage.module
+    ));
 }
 
-arline::Shader::~Shader() noexcept
+auto ar::Shader::destroy() noexcept -> void
 {
-    auto shaderStageCI{ reinterpret_cast<VkPipelineShaderStageCreateInfo*>(this)};
-
-    if (shaderStageCI->module)
-    {
-        vkDestroyShaderModule(g_ctx.device, shaderStageCI->module, nullptr);
-    }
-
-    m = {};
-}
-
-arline::Shader::Shader(Shader&& other) noexcept
-    : m{ other.m }
-{
-    other.m = {};
-}
-
-auto arline::Shader::operator=(Shader&& other) noexcept -> Shader&
-{
-    this->~Shader();
-    this->m = other.m;
-    other.m = {};
-    return *this;
+    vkDestroyShaderModule(g_ctx.device, shaderStage.module, nullptr);
 }
 
 #pragma endregion
 #pragma region Pipeline
 
-arline::Pipeline::Pipeline(GraphicsConfig&& config) noexcept
+auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
 {
     VkDynamicState constexpr dynamicStates[] = {
         VK_DYNAMIC_STATE_VIEWPORT,
@@ -1278,87 +1281,24 @@ arline::Pipeline::Pipeline(GraphicsConfig&& config) noexcept
     }};
 
     arContext::resultCheck(vkCreateGraphicsPipelines(
-            g_ctx.device,
-            nullptr,
-            1u,
-            &pipelineCreateInfo,
-            nullptr,
-            reinterpret_cast<VkPipeline*>(&m.pHandle)
-        )
-    );
+        g_ctx.device,
+        nullptr,
+        1u,
+        &pipelineCreateInfo,
+        nullptr,
+        &handle
+    ));
 }
 
-arline::Pipeline::~Pipeline() noexcept
+auto ar::Pipeline::destroy() noexcept -> void
 {
-    if (m.pHandle)
-    {
-        vkDestroyPipeline(g_ctx.device, static_cast<VkPipeline>(m.pHandle), nullptr);
-    }
-
-    m = {};
-}
-
-arline::Pipeline::Pipeline(Pipeline&& other) noexcept
-    : m{ other.m }
-{
-    other.m = {};
-}
-
-auto arline::Pipeline::operator=(Pipeline&& other) noexcept -> Pipeline&
-{
-    this->~Pipeline();
-    this->m = other.m;
-    other.m = {};
-
-    return *this;
+    vkDestroyPipeline(g_ctx.device, handle, nullptr);
 }
 
 #pragma endregion
 #pragma region Buffer
 
-arline::Buffer::Buffer(Buffer&& other) noexcept
-    : m{ other.m }
-{
-    other.m = {};
-}
-
-arline::Buffer::~Buffer() noexcept
-{
-    if (m.pHandle)
-    {
-        vmaDestroyBuffer(
-            g_ctx.allocator,
-            static_cast<VkBuffer>(m.pHandle),
-            static_cast<VmaAllocation>(m.pAllocation)
-        );
-    }
-
-    m = {};
-}
-
-auto arline::Buffer::operator=(Buffer&& other) noexcept -> Buffer&
-{
-    this->~Buffer();
-    this->m = other.m;
-    other.m = {};
-
-    return *this;
-}
-
-auto arline::Buffer::getAddress() const noexcept -> u64_t
-{
-    auto const bufferDAI{ VkBufferDeviceAddressInfo{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = static_cast<VkBuffer>(m.pHandle)
-    }};
-
-    return vkGetBufferDeviceAddress(g_ctx.device, &bufferDAI);
-}
-
-#pragma endregion
-#pragma region Dynamic Buffer
-
-arline::DynamicBuffer::DynamicBuffer(size_t capacity) noexcept
+auto ar::Buffer::create(size_t bufferCapacity) noexcept -> void
 {
     static constexpr auto usage{ VkBufferUsageFlags{
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
@@ -1371,7 +1311,7 @@ arline::DynamicBuffer::DynamicBuffer(size_t capacity) noexcept
 
     auto const bufferCI{ VkBufferCreateInfo{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = capacity,
+        .size = bufferCapacity,
         .usage = usage
     }};
 
@@ -1380,14 +1320,11 @@ arline::DynamicBuffer::DynamicBuffer(size_t capacity) noexcept
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
     }};
 
-    VkBuffer buffer;
-    VmaAllocation allocation;
-
     arContext::resultCheck(vmaCreateBuffer(
         g_ctx.allocator,
         &bufferCI,
         &allocationCI,
-        &buffer,
+        &handle,
         &allocation,
         nullptr
     ));
@@ -1395,44 +1332,23 @@ arline::DynamicBuffer::DynamicBuffer(size_t capacity) noexcept
     arContext::resultCheck(vmaMapMemory(
         g_ctx.allocator,
         allocation,
-        reinterpret_cast<void**>(&m_pMapped)
+        reinterpret_cast<void**>(&pMapped)
     ));
 
-    m = {
-        .pHandle = buffer,
-        .pAllocation = allocation,
-        .capacity = capacity
-    };
+    auto const bufferDAI{ VkBufferDeviceAddressInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = handle
+    }};
+
+    capacity = bufferCapacity;
+    address = vkGetBufferDeviceAddress(g_ctx.device, &bufferDAI);
 }
 
-arline::DynamicBuffer::~DynamicBuffer() noexcept
+auto ar::Buffer::create(void const* pData, size_t dataSize) noexcept -> void
 {
-    if (m_pMapped)
-    {
-        vmaUnmapMemory(
-            g_ctx.allocator,
-            static_cast<VmaAllocation>(m.pAllocation)
-        );
-    }
-}
+    pMapped = nullptr;
+    capacity = dataSize;
 
-auto arline::DynamicBuffer::write(void const* pData, size_t size, size_t offset) noexcept -> void
-{
-    size = size ? size : m.capacity;
-    memcpy(m_pMapped + offset, pData, size);
-    arContext::resultCheck(vmaFlushAllocation(
-        g_ctx.allocator,
-        static_cast<VmaAllocation>(m.pAllocation),
-        offset,
-        size
-    ));
-}
-
-#pragma endregion
-#pragma region Static Buffer
-
-arline::StaticBuffer::StaticBuffer(void const* pData, size_t dataSize)
-{
     static constexpr auto usage{ VkBufferUsageFlags{
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -1452,17 +1368,21 @@ arline::StaticBuffer::StaticBuffer(void const* pData, size_t dataSize)
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
     }};
 
-    VkBuffer buffer;
-    VmaAllocation allocation;
-
     arContext::resultCheck(vmaCreateBuffer(
         g_ctx.allocator,
         &bufferCI,
         &allocationCI,
-        &buffer,
+        &handle,
         &allocation,
         nullptr
     ));
+    
+    auto const bufferDAI{ VkBufferDeviceAddressInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = handle
+    }};
+
+    address = vkGetBufferDeviceAddress(g_ctx.device, &bufferDAI);
 
     VkMemoryPropertyFlags memProperty;
     vmaGetAllocationMemoryProperties(g_ctx.allocator, allocation, &memProperty);
@@ -1519,74 +1439,86 @@ arline::StaticBuffer::StaticBuffer(void const* pData, size_t dataSize)
         vkCmdCopyBuffer(
             g_ctx.transferCommandBuffer,
             stagingBuffer,
-            buffer,
+            handle,
             1u,
             &bufferCopy
         );
 
         arContext::endTransfer();
-    }
 
-    m = {
-        .pHandle = buffer,
-        .pAllocation = allocation,
-        .capacity = dataSize
-    };
+        vmaDestroyBuffer(g_ctx.allocator, stagingBuffer, stagingAllocation);
+    }
+}
+
+auto ar::Buffer::destroy() noexcept -> void
+{
+    if (pMapped)
+    {
+        vmaUnmapMemory(
+            g_ctx.allocator,
+            allocation
+        );
+    }
+   
+    vmaDestroyBuffer(
+        g_ctx.allocator,
+        handle,
+        allocation
+    );
+}
+
+auto ar::Buffer::write(void const* pData, size_t size, size_t offset) noexcept -> void
+{
+    size = static_cast<b8_t>(size) * size + !static_cast<b8_t>(size) * capacity;
+    memcpy(pMapped + offset, pData, size);
+    arContext::resultCheck(vmaFlushAllocation(
+        g_ctx.allocator,
+        allocation,
+        offset,
+        size
+    ));
 }
 
 #pragma endregion
 #pragma region Image
 
-arline::Image::~Image() noexcept
+static auto makeImageResident(ar::ImageCreateInfo const& imageCI, ar::Image& image) noexcept -> void
 {
-    if (m.pView)
+    if (imageCI.sampler)
     {
-        vkDestroyImageView(
+        auto const writeImage{ VkDescriptorImageInfo{
+            .sampler = *(&g_ctx.linearToEdgeSampler + (static_cast<u8_t>(imageCI.sampler) - 1ui8)),
+            .imageView = image.view,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        }};
+
+        auto const write{ VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = g_ctx.descriptorSet,
+            .dstArrayElement = imageCI.shaderArrayElement,
+            .descriptorCount = 1u,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &writeImage
+        }};
+
+        vkUpdateDescriptorSets(
             g_ctx.device,
-            static_cast<VkImageView>(m.pView),
+            1u,
+            &write,
+            0u,
             nullptr
         );
     }
-
-    if (m.pHandle)
-    {
-        vmaDestroyImage(
-            g_ctx.allocator,
-            static_cast<VkImage>(m.pHandle),
-            static_cast<VmaAllocation>(m.pAllocation)
-        );
-    }
-
-    m = {};
 }
 
-arline::Image::Image(Image&& other) noexcept
-    : m{ other.m }
+auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
 {
-    other.m = {};
-}
+    sampler = imageCreateInfo.sampler;
+    width = static_cast<b8_t>(imageCreateInfo.width) * imageCreateInfo.width +
+           !static_cast<b8_t>(imageCreateInfo.width) * g_ctx.surfaceExtent.width;
+    height = static_cast<b8_t>(imageCreateInfo.height) * imageCreateInfo.height +
+            !static_cast<b8_t>(imageCreateInfo.height) * g_ctx.surfaceExtent.height;
 
-auto arline::Image::operator=(Image&& other) noexcept -> Image&
-{
-    auto index{ m.index };
-    auto sampler{ m.sampler };
-
-    this->~Image();
-    this->m = other.m;
-    other.m = {};
-
-    this->makeResident(sampler, index);
-
-    return *this;
-}
-
-arline::Image::Image(ImageCreateInfo const& imageCreateInfo) noexcept
-    : m{
-        .sampler = imageCreateInfo.sampler,
-        .width = imageCreateInfo.width ? imageCreateInfo.width : g_ctx.surfaceExtent.width,
-        .height = imageCreateInfo.height ? imageCreateInfo.height : g_ctx.surfaceExtent.height
-    }
-{
     VkFormat const formats[] = { g_ctx.surfaceFormat.format, VK_FORMAT_D32_SFLOAT };
     VkImageAspectFlags constexpr aspects[] = { VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_DEPTH_BIT };
     VkImageUsageFlags constexpr usages[] = {
@@ -1606,14 +1538,14 @@ arline::Image::Image(ImageCreateInfo const& imageCreateInfo) noexcept
         .imageType = VK_IMAGE_TYPE_2D,
         .format = formats[usage],
         .extent = {
-            .width = m.width,
-            .height = m.height,
+            .width = width,
+            .height = height,
             .depth = 1u
         },
         .mipLevels = 1u,
         .arrayLayers = 1u,
         .samples = VK_SAMPLE_COUNT_1_BIT,
-        .usage = m.sampler ? usages[usage] | VK_IMAGE_USAGE_SAMPLED_BIT : usages[usage]
+        .usage = sampler ? usages[usage] | VK_IMAGE_USAGE_SAMPLED_BIT : usages[usage]
     }};
 
     auto const allocationCI{ VmaAllocationCreateInfo{
@@ -1626,13 +1558,13 @@ arline::Image::Image(ImageCreateInfo const& imageCreateInfo) noexcept
         g_ctx.allocator,
         &imageCI,
         &allocationCI,
-        reinterpret_cast<VkImage*>(&m.pHandle),
-        reinterpret_cast<VmaAllocation*>(&m.pAllocation),
+        &handle,
+        &allocation,
         nullptr
     ));
 
-    m.pView = arContext::createImageView(
-        static_cast<VkImage>(m.pHandle),
+    view = arContext::createImageView(
+        handle,
         VK_IMAGE_VIEW_TYPE_2D,
         formats[usage],
         aspects[usage],
@@ -1646,10 +1578,10 @@ arline::Image::Image(ImageCreateInfo const& imageCreateInfo) noexcept
         .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = layouts[!m.sampler * (usage + 1ui8)],
+        .newLayout = layouts[!sampler * (usage + 1ui8)],
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = static_cast<VkImage>(m.pHandle),
+        .image = handle,
         .subresourceRange = {
             .aspectMask = aspects[usage],
             .levelCount = 1u,
@@ -1668,46 +1600,13 @@ arline::Image::Image(ImageCreateInfo const& imageCreateInfo) noexcept
 
     arContext::endTransfer();
 
-    this->makeResident(m.sampler, 0u);
+    makeImageResident(imageCreateInfo, *this);
 }
 
-auto arline::Image::makeResident(Sampler sampler, u32_t index) noexcept -> void
+auto ar::Image::destroy() noexcept -> void
 {
-    if (sampler)
-    {
-        if (index)
-        {
-            m.index = index;
-            --g_ctx.allocatedSampledImageCount;
-        }
-        else
-        {
-            m.index = ++g_ctx.allocatedSampledImageCount;
-        }
-
-        auto const writeImage{ VkDescriptorImageInfo{
-            .sampler = *(&g_ctx.linearToEdgeSampler + (static_cast<u8_t>(sampler) - 1ui8)),
-            .imageView = static_cast<VkImageView>(m.pView),
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-        }};
-
-        auto const write{ VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = g_ctx.descriptorSet,
-            .dstArrayElement = m.index,
-            .descriptorCount = 1u,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &writeImage
-        }};
-
-        vkUpdateDescriptorSets(
-            g_ctx.device,
-            1u,
-            &write,
-            0u,
-            nullptr
-        );
-    }
+    vkDestroyImageView(g_ctx.device, view, nullptr);
+    vmaDestroyImage(g_ctx.allocator, handle, allocation);
 }
 
 #pragma endregion
@@ -1786,6 +1685,9 @@ static auto arContext::presentFrame() noexcept -> b8_t
 static auto arContext::create() noexcept -> void
 {
     {
+        volkInitialize();
+    }
+    {
         u32_t apiVersion;
         arContext::resultCheck(vkEnumerateInstanceVersion(&apiVersion));
 
@@ -1846,6 +1748,7 @@ static auto arContext::create() noexcept -> void
         }};
 
         arContext::resultCheck(vkCreateInstance(&instanceCI, nullptr, &g_ctx.instance));
+        volkLoadInstance(g_ctx.instance);
     }
     #ifdef AR_ENABLE_INFO_CALLBACK
     if (g_ctx.messenger.enableValidationLayers)
@@ -2055,17 +1958,24 @@ static auto arContext::create() noexcept -> void
         }};
 
         arContext::resultCheck(vkCreateDevice(g_ctx.physicalDevice, &deviceCI, nullptr, &g_ctx.device));
+        volkLoadDevice(g_ctx.device);
 
         vkGetDeviceQueue(g_ctx.device, g_ctx.graphicsFamily, 0u, &g_ctx.graphicsQueue);
         vkGetDeviceQueue(g_ctx.device, g_ctx.presentFamily, presentQueueIndex, &g_ctx.presentQueue);
     }
     {
+        auto const functions{ VmaVulkanFunctions{
+            .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
+            .vkGetDeviceProcAddr = vkGetDeviceProcAddr
+        }};
+
         auto const allocatorCI{ VmaAllocatorCreateInfo{
             .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT | VMA_ALLOCATOR_CREATE_EXTERNALLY_SYNCHRONIZED_BIT,
             .physicalDevice = g_ctx.physicalDevice,
             .device = g_ctx.device,
+            .pVulkanFunctions = &functions,
             .instance = g_ctx.instance,
-            .vulkanApiVersion = VK_API_VERSION_1_3,
+            .vulkanApiVersion = VK_API_VERSION_1_3
         }};
 
         arContext::resultCheck(vmaCreateAllocator(&allocatorCI, &g_ctx.allocator));
