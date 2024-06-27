@@ -273,8 +273,23 @@ namespace ar
         u32_t shaderArrayElement;
     };
 
+    struct MapEntry
+    {
+        u32_t id;
+        u32_t offset;
+        size_t size;
+    };
+
+    struct Constants
+    {
+        std::initializer_list<MapEntry> entries;
+        void const* pData;
+    };
+
     struct ShaderHandle
     {
+        VkSpecializationMapEntry entries[6];
+        VkSpecializationInfo spec;
         VkPipelineShaderStageCreateInfo shaderStage;
     };
 
@@ -333,6 +348,8 @@ namespace ar
     [[nodiscard]] auto getGlobalCursorPositionY()  noexcept -> i32_t;
     [[nodiscard]] auto getCursorPositionX()        noexcept -> i32_t;
     [[nodiscard]] auto getCursorPositionY()        noexcept -> i32_t;
+    [[nodiscard]] auto getCursorDeltaX()           noexcept -> i32_t;
+    [[nodiscard]] auto getCursorDeltaY()           noexcept -> i32_t;
 
     [[nodiscard]] auto getWidth()                  noexcept -> i32_t;
     [[nodiscard]] auto getHeight()                 noexcept -> i32_t;
@@ -351,8 +368,8 @@ namespace ar
 
     struct Shader : public ShaderHandle
     {
-        auto create(std::string_view path) noexcept -> void;
-        auto create(u32_t const* pSpirv, size_t size, ShaderStage stage) noexcept -> void;
+        auto create(std::string_view path, Constants const& constants = {}) noexcept -> void;
+        auto create(u32_t const* pSpirv, size_t size, ShaderStage stage, Constants const& constants = {}) noexcept -> void;
         auto destroy() noexcept -> void;
     };
 

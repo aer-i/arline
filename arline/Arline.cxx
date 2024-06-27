@@ -118,20 +118,21 @@ struct ArlineButton
 
 struct ArlineMouse
 {
+    i32_t deltaX, deltaY;
     i32_t globPosX, globPosY;
     i32_t posX, posY;
     ArlineButton buttons[5];
 };
 
 #ifdef AR_ENABLE_INFO_CALLBACK
-static callback_t     g_infoCallback;
+static callback_t     g_infoCallback  = {};
 #endif
-static callback_t     g_errorCallback;
-static ArlineContext  g_ctx;
-static ArlineWindow   g_wnd;
-static ArlineTimer    g_timer;
-static ArlineKeyboard g_keyboard;
-static ArlineMouse    g_mouse;
+static callback_t     g_errorCallback = {};
+static ArlineContext  g_ctx           = {};
+static ArlineWindow   g_wnd           = {};
+static ArlineTimer    g_timer         = {};
+static ArlineKeyboard g_keyboard      = {};
+static ArlineMouse    g_mouse         = {};
 
 #ifdef AR_ENABLE_INFO_CALLBACK
 #define AR_INFO_CALLBACK(f, ...) \
@@ -517,6 +518,9 @@ auto ar::pollEvents() noexcept -> void
 
     ::ScreenToClient(g_wnd.hwnd, &cursorPos);
 
+    g_mouse.deltaX = cursorPos.x - g_mouse.posX;
+    g_mouse.deltaY = cursorPos.y - g_mouse.posY;
+
     g_mouse.posX = cursorPos.x;
     g_mouse.posY = cursorPos.y;
 }
@@ -671,6 +675,16 @@ auto ar::getCursorPositionY() noexcept -> i32_t
     return g_mouse.posY;
 }
 
+auto ar::getCursorDeltaX() noexcept -> i32_t
+{
+    return g_mouse.deltaX;
+}
+
+auto ar::getCursorDeltaY() noexcept -> i32_t
+{
+    return g_mouse.deltaY;
+}
+
 auto ar::setCursorPosition(i32_t x, i32_t y) noexcept -> void
 {
     ::SetCursorPos(x, y);
@@ -688,43 +702,6 @@ auto ar::hideCursor() noexcept -> void
 
 #pragma endregion
 #pragma region Graphics Commands
-
-// ar::GraphicsCommands::GraphicsCommands() noexcept
-// {
-//     auto const commandBufferBI{ VkCommandBufferBeginInfo{
-//         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
-//     }};
-
-//     arContext::resultCheck(vkResetCommandPool(g_ctx.device, g_ctx.graphicsCommandPool, {}));
-
-//     for (auto i{ g_ctx.imageCount }; i--; )
-//     {
-//         arContext::resultCheck(
-//             vkBeginCommandBuffer(g_ctx.images[i].graphicsCommandBuffer, &commandBufferBI)
-//         );
-
-//         vkCmdBindDescriptorSets(
-//             g_ctx.images[i].graphicsCommandBuffer,
-//             VK_PIPELINE_BIND_POINT_GRAPHICS,
-//             g_ctx.pipelineLayout,
-//             0u,
-//             1u,
-//             &g_ctx.descriptorSet,
-//             0u,
-//             nullptr
-//         );
-//     }
-// }
-
-// ar::GraphicsCommands::~GraphicsCommands() noexcept
-// {
-//     for (auto i{ g_ctx.imageCount }; i--; )
-//     {
-//         arContext::resultCheck(
-//             vkEndCommandBuffer(g_ctx.images[i].graphicsCommandBuffer)
-//         );
-//     }
-// }
 
 auto ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept -> void
 {
@@ -1077,7 +1054,7 @@ auto ar::GraphicsCommands::pushConstant(void const* pData, u32_t size) noexcept 
     vkCmdPushConstants(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
         g_ctx.pipelineLayout,
-        VK_SHADER_STAGE_VERTEX_BIT,
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         0u,
         size,
         pData
@@ -1087,7 +1064,7 @@ auto ar::GraphicsCommands::pushConstant(void const* pData, u32_t size) noexcept 
 #pragma endregion
 #pragma region Shaders
 
-auto ar::Shader::create(std::string_view path) noexcept -> void
+auto ar::Shader::create(std::string_view path, Constants const& constants) noexcept -> void
 {
     auto error{ [&]
     {
@@ -1113,10 +1090,27 @@ auto ar::Shader::create(std::string_view path) noexcept -> void
         error();
     }
 
+    spec = {};
+
+    if (constants.entries.size())
+    {
+        memcpy(entries, constants.entries.begin(), constants.entries.size() * sizeof(MapEntry));
+
+        for (auto const& entry : constants.entries)
+        {
+            spec.dataSize += entry.size;
+        }
+
+        spec.pData = constants.pData;
+        spec.mapEntryCount = static_cast<u32_t>(constants.entries.size());
+        spec.pMapEntries = entries;
+    }
+
     shaderStage = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = stageFlagBits,
-        .pName = "main"
+        .pName = "main",
+        .pSpecializationInfo = &spec
     };
 
     auto const file{ ::CreateFileA(
@@ -1167,12 +1161,29 @@ auto ar::Shader::create(std::string_view path) noexcept -> void
     delete[] pBuffer;
 }
 
-auto ar::Shader::create(u32_t const* pSpirv, size_t size, ShaderStage stage) noexcept -> void
+auto ar::Shader::create(u32_t const* pSpirv, size_t size, ShaderStage stage, Constants const& constants) noexcept -> void
 {
+    spec = {};
+
+    if (constants.entries.size())
+    {
+        memcpy(entries, constants.entries.begin(), constants.entries.size() * sizeof(MapEntry));
+
+        for (auto const& entry : constants.entries)
+        {
+            spec.dataSize += entry.size;
+        }
+
+        spec.pData = constants.pData;
+        spec.mapEntryCount = static_cast<u32_t>(constants.entries.size());
+        spec.pMapEntries = entries;
+    }
+
     shaderStage = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = static_cast<VkShaderStageFlagBits>(stage),
-        .pName = "main"
+        .pName = "main",
+        .pSpecializationInfo = &spec
     };
 
     auto const shaderModuleCI{ VkShaderModuleCreateInfo{
@@ -1199,6 +1210,14 @@ auto ar::Shader::destroy() noexcept -> void
 
 auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
 {
+    VkPipelineShaderStageCreateInfo shaderStages[6];
+
+    for (auto i{ u32_t{} }; auto const& shader : config.shaders)
+    {
+        shaderStages[i] = shader.shaderStage;
+        ++i;
+    }
+
     VkDynamicState constexpr dynamicStates[] = {
         VK_DYNAMIC_STATE_VIEWPORT,
         VK_DYNAMIC_STATE_SCISSOR
@@ -1268,7 +1287,7 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &renderingCreateInfo,
         .stageCount = static_cast<u32_t>(config.shaders.size()),
-        .pStages = reinterpret_cast<VkPipelineShaderStageCreateInfo const*>(config.shaders.begin()),
+        .pStages = shaderStages,
         .pVertexInputState = &vertexInputStateCreateInfo,
         .pInputAssemblyState = &inputAssemblyStateCreateInfo,
         .pViewportState = &viewportStateCreateInfo,
@@ -2066,7 +2085,7 @@ static auto arContext::create() noexcept -> void
     }
     {
         auto const pushConstantRange{ VkPushConstantRange{
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             .size = 128u
         }};
 
