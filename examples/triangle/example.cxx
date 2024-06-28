@@ -31,7 +31,12 @@ static auto init() -> void
     frag.create(shaders::frag, sizeof(shaders::frag), ar::ShaderStage::eFragment);
 
     pipeline.create(ar::GraphicsConfig{
-        .shaders = { vert, frag }
+        .shaders = { vert, frag },
+        .attachments = {
+            ar::BlendAttachment{
+                .colorComponent = ar::ColorComponent::eRGBA
+            }
+        }
     });
 
     vert.destroy();

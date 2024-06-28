@@ -969,9 +969,8 @@ auto ar::GraphicsCommands::beginRendering(ColorAttachments colorAttachments, Dep
     }};
 
     auto const viewport{ VkViewport{
-        .y = static_cast<f32_t>(renderingInfo.renderArea.extent.height),
         .width = static_cast<f32_t>(renderingInfo.renderArea.extent.width),
-        .height = -static_cast<f32_t>(renderingInfo.renderArea.extent.height),
+        .height = static_cast<f32_t>(renderingInfo.renderArea.extent.height),
         .maxDepth = 1.f
     }};
 
@@ -1037,9 +1036,8 @@ auto ar::GraphicsCommands::beginPresent() noexcept -> void
     }};
 
     auto const viewport{ VkViewport{
-        .y = static_cast<f32_t>(g_ctx.surfaceExtent.height),
         .width = static_cast<f32_t>(g_ctx.surfaceExtent.width),
-        .height = -static_cast<f32_t>(g_ctx.surfaceExtent.height),
+        .height = static_cast<f32_t>(g_ctx.surfaceExtent.height),
         .maxDepth = 1.f
     }};
 
@@ -1350,6 +1348,23 @@ auto ar::Shader::destroy() noexcept -> void
 auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
 {
     VkPipelineShaderStageCreateInfo shaderStages[6];
+    VkPipelineColorBlendAttachmentState blendAttachments[8];
+
+    for (auto i{ size_t{} }; i < config.attachments.size(); ++i)
+    {
+        auto attachment{ config.attachments.begin() + i };
+
+        blendAttachments[i] = {
+            .blendEnable = static_cast<VkBool32>(attachment->blendEnable),
+            .srcColorBlendFactor = static_cast<VkBlendFactor>(attachment->srcColorFactor),
+            .dstColorBlendFactor = static_cast<VkBlendFactor>(attachment->dstColorFactor),
+            .colorBlendOp = static_cast<VkBlendOp>(attachment->colorBlendOp),
+            .srcAlphaBlendFactor = static_cast<VkBlendFactor>(attachment->srcAlphaFactor),
+            .dstAlphaBlendFactor = static_cast<VkBlendFactor>(attachment->dstAlphaFactor),
+            .alphaBlendOp = static_cast<VkBlendOp>(attachment->alphaBlendOp),
+            .colorWriteMask = static_cast<VkColorComponentFlags>(attachment->colorComponent)
+        };
+    }
 
     for (auto i{ u32_t{} }; auto const& shader : config.shaders)
     {
@@ -1392,15 +1407,11 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
         .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT
     }};
 
-    auto const blendAttachmentState{ VkPipelineColorBlendAttachmentState{
-        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-    }};
-
     auto const colorBlendStateCreateInfo{ VkPipelineColorBlendStateCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .logicOp = VK_LOGIC_OP_COPY,
-        .attachmentCount = 1u,
-        .pAttachments = &blendAttachmentState
+        .logicOp = VK_LOGIC_OP_COPY, // TODO
+        .attachmentCount = static_cast<u32_t>(config.attachments.size()),
+        .pAttachments = blendAttachments
     }};
 
     auto const depthStencilStateCreateInfo{ VkPipelineDepthStencilStateCreateInfo{

@@ -39,6 +39,9 @@ init() noexcept -> void
 
     pipeline.create(ar::GraphicsConfig{
         .shaders = { vert, frag },
+        .attachments = { ar::BlendAttachment{
+            .colorComponent = ar::ColorComponent::eRGBA
+        }},
         .depthStencilState = {
             .depthTestEnable = true,
             .depthWriteEnable = true,
@@ -53,7 +56,10 @@ init() noexcept -> void
     frag.create(shaders::finalImageFrag, sizeof(shaders::finalImageFrag), ar::ShaderStage::eFragment);
 
     finalImagePipeline.create(ar::GraphicsConfig{
-        .shaders = { vert, frag }
+        .shaders = { vert, frag },
+        .attachments = { ar::BlendAttachment{
+            .colorComponent = ar::ColorComponent::eRGBA
+        }}
     });
 
     frag.destroy();

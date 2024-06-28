@@ -118,98 +118,149 @@ namespace ar
 
     enum class Button : u8_t
     {
-        eLeft            = 0x00,
-        eRight           = 0x01,
-        eMiddle          = 0x02,
-        eSide1           = 0x03,
-        eSide2           = 0x04
+        eLeft                  = 0x00,
+        eRight                 = 0x01,
+        eMiddle                = 0x02,
+        eSide1                 = 0x03,
+        eSide2                 = 0x04
     };
 
     enum class ShaderStage : u8_t
     {
-        eVertex          = 0x01,
-        eFragment        = 0x10,
-        eCompute         = 0x20
+        eVertex                = 0x01,
+        eFragment              = 0x10,
+        eCompute               = 0x20
     };
 
     enum class Topology : u8_t
     {
-        ePoint           = 0x00,
-        eLineList        = 0x01,
-        eLineStrip       = 0x02,
-        eTriangleList    = 0x03,
-        eTriangleStrip   = 0x04,
-        eTriangleFan     = 0x05
+        ePoint                 = 0x00,
+        eLineList              = 0x01,
+        eLineStrip             = 0x02,
+        eTriangleList          = 0x03,
+        eTriangleStrip         = 0x04,
+        eTriangleFan           = 0x05
     };
 
     enum class PolygonMode : u8_t
     {
-        eFill            = 0x00,
-        eLine            = 0x01,
-        ePoint           = 0x02
+        eFill                  = 0x00,
+        eLine                  = 0x01,
+        ePoint                 = 0x02
     };
 
     enum class CullMode : u8_t
     {
-        eNone            = 0x00,
-        eFront           = 0x01,
-        eBack            = 0x02
+        eNone                  = 0x00,
+        eFront                 = 0x01,
+        eBack                  = 0x02
     };
 
     enum class LoadOp : u8_t
     {
-        eLoad            = 0x00,
-        eClear           = 0x01,
-        eDontCare        = 0x02
+        eLoad                  = 0x00,
+        eClear                 = 0x01,
+        eDontCare              = 0x02
     };
 
     enum class StoreOp : u8_t
     {
-        eStore           = 0x00,
-        eDontCare        = 0x01
+        eStore                 = 0x00,
+        eDontCare              = 0x01
     };
 
     enum class ImageUsage : u8_t
     {
-        eColorAttachment = 0x00,
-        eDepthAttachment = 0x01
+        eColorAttachment       = 0x00,
+        eDepthAttachment       = 0x01
     };
 
     enum class ImageLayout : u8_t
     {
-        eColorAttachment = 0x02,
-        eDepthAttachment = 0x03,
-        eDepthReadOnly   = 0x04,
-        eShaderReadOnly  = 0x05
+        eColorAttachment       = 0x02,
+        eDepthAttachment       = 0x03,
+        eDepthReadOnly         = 0x04,
+        eShaderReadOnly        = 0x05
     };
 
     enum class CompareOp : u8_t
     {
-        eNever           = 0x00,
-        eLess            = 0x01,
-        eEqual           = 0x02,
-        eLequal          = 0x03,
-        eGreater         = 0x04,
-        eNotEqual        = 0x05,
-        eGequal          = 0x06,
-        eAlways          = 0x07
+        eNever                 = 0x00,
+        eLess                  = 0x01,
+        eEqual                 = 0x02,
+        eLequal                = 0x03,
+        eGreater               = 0x04,
+        eNotEqual              = 0x05,
+        eGequal                = 0x06,
+        eAlways                = 0x07
     };
 
     enum class Sampler : u8_t
     {
-        eNone            = 0x00,
-        eLinearToEdge    = 0x01,
-        eLinearRepeat    = 0x02,
-        eNearestToEdge   = 0x03,
-        eNearestRepeat   = 0x04
+        eNone                  = 0x00,
+        eLinearToEdge          = 0x01,
+        eLinearRepeat          = 0x02,
+        eNearestToEdge         = 0x03,
+        eNearestRepeat         = 0x04
     };
 
     enum class Request : u8_t
     {
-        eNone            = 0x00,
-        eRecordCommands  = 0x01,
-        eEnableVsync     = 0x02,
-        eDisableVsync    = 0x03
+        eNone                  = 0x00,
+        eRecordCommands        = 0x01,
+        eEnableVsync           = 0x02,
+        eDisableVsync          = 0x03
+    };
+
+    enum class BlendOp : u8_t
+    {
+        eAdd                   = 0x00,
+        eSubtract              = 0x01,
+        eReverseSubtract       = 0x02,
+        eMin                   = 0x03,
+        eMax                   = 0x04
+    };
+
+    enum class BlendFactor : u8_t
+    {
+        eZero                  = 0x00,
+        eOne                   = 0x01,
+        eSrcColor              = 0x02,
+        eOneMinusSrcColor      = 0x03,
+        eDstColor              = 0x04,
+        eOneMinusDstColor      = 0x05,
+        eSrcAlpha              = 0x06,
+        eOneMinusSrcAlpha      = 0x07,
+        eDstAlpha              = 0x08,
+        eOneMinusDstAlpha      = 0x09,
+        eConstantColor         = 0x0a,
+        eOneMinusConstantColor = 0x0b,
+        eConstantAlpha         = 0x0c,
+        eOneMinusConstantAlpha = 0x0d,
+        eSrcAlphaSaturate      = 0x0e,
+        eSrcColor1             = 0x0f,
+        eOneMinusSrcColor1     = 0x10,
+        eSrcApha1              = 0x11,
+        eOneMinusSrcApha1      = 0x12
+    };
+
+    enum class ColorComponent : u8_t
+    {
+        eR                     = 0x01,
+        eG                     = 0x02,
+        eRG                    = 0x03,
+        eB                     = 0x04,
+        eRB                    = 0x05,
+        eGB                    = 0x06,
+        eRGB                   = 0x07,
+        eA                     = 0x08,
+        eRA                    = 0x09,
+        eGA                    = 0x0a,
+        eRGA                   = 0x0b,
+        eBA                    = 0x0c,
+        eRBA                   = 0x0d,
+        eGBA                   = 0x0e,
+        eRGBA                  = 0x0f
     };
 
 #ifdef __clang__
@@ -253,6 +304,18 @@ namespace ar
         callback_t errorCallback;
         b8_t enableValidationLayers;
         b8_t enalbeVsync;
+    };
+
+    struct BlendAttachment
+    {
+        b8_t blendEnable;
+        BlendOp colorBlendOp;
+        BlendOp alphaBlendOp;
+        BlendFactor srcColorFactor;
+        BlendFactor dstColorFactor;
+        BlendFactor srcAlphaFactor;
+        BlendFactor dstAlphaFactor;
+        ColorComponent colorComponent;
     };
 
     struct DrawIndirectCommand
@@ -359,6 +422,7 @@ namespace ar
     struct GraphicsConfig
     {
         std::initializer_list<ShaderHandle> shaders;
+        std::initializer_list<BlendAttachment> attachments;
         DepthStencilState depthStencilState;
         Topology    topology    = Topology::eTriangleList;
         PolygonMode polygonMode = PolygonMode::eFill;
