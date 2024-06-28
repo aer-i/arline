@@ -5,6 +5,10 @@
 #   define VK_USE_PLATFORM_WIN32_KHR
 #   include <dwmapi.h>
 #   pragma comment(lib, "dwmapi")
+#else
+#   define VK_USE_PLATFORM_XLIB_KHR
+#   include <unistd.h>
+#   include <sys/time.h>
 #endif
 
 #include "Arline.hxx"
@@ -82,8 +86,13 @@ struct ArlineContext
 
 struct ArlineWindow
 {
+#ifdef _WIN32
     HWND hwnd;
     HINSTANCE hinstance;
+#else
+    Display* dpy;
+    Window xwnd;
+#endif
     i32_t width;
     i32_t height;
     b8_t available;
@@ -91,8 +100,14 @@ struct ArlineWindow
 
 struct ArlineTimer
 {
+#ifdef _WIN32
     LARGE_INTEGER timeOffset;
     LARGE_INTEGER frequency;
+#else
+    u64_t timeOffset;
+    clockid_t clock;
+    static constexpr u64_t s_frequency = 1'000'000'000;
+#endif
     f64_t previousTime;
     f64_t deltaTime;
 };
@@ -285,7 +300,7 @@ auto ar::execute(AppInfo&& info) noexcept -> i32_t
 }
 
 #pragma endregion
-#pragma region Window Win32
+#pragma region Window
 #ifdef _WIN32
 
 static auto arWindow::create(ar::AppInfo const& config) noexcept -> void
@@ -541,6 +556,68 @@ auto ar::messageBoxError(std::string_view error) noexcept -> void
     ::MessageBoxA(nullptr, error.data(), "Error", MB_ICONERROR);
 }
 
+#else
+
+static auto arWindow::create(ar::AppInfo const& config) noexcept -> void
+{
+    g_wnd = ArlineWindow{
+        .width = config.width,
+        .height = config.height,
+        .available = true
+    };
+
+    g_wnd.dpy = XOpenDisplay(nullptr);
+    g_wnd.xwnd = XCreateSimpleWindow(
+        g_wnd.dpy,
+        XDefaultRootWindow(g_wnd.dpy),
+        0, 0,
+        config.width, config.height,
+        0, 0,
+        0x00000000
+    );
+
+    XMapWindow(g_wnd.dpy, g_wnd.xwnd);
+    XFlush(g_wnd.dpy);
+
+    ar::setTitle(config.title);
+
+    AR_INFO_CALLBACK("Created X11 Window: width [%d], height [%d], title [%s]", config.width, config.height, config.title.data())
+}
+
+static auto arWindow::teardown() noexcept -> void
+{    
+    XDestroyWindow(g_wnd.dpy, g_wnd.xwnd);
+    XCloseDisplay(g_wnd.dpy);
+    AR_INFO_CALLBACK("%s", "Destroyed X11 Window")
+}
+
+auto ar::pollEvents() noexcept -> void
+{
+    XEvent event;
+
+    while (XPending(g_wnd.dpy))
+    {
+        XNextEvent(g_wnd.dpy, &event);
+        
+        switch (event.type)
+        {
+        case ClientMessage:
+            g_wnd.available = false;
+            break;
+        }
+    }
+}
+
+auto ar::waitEvents() noexcept -> void
+{
+    ar::pollEvents();
+}
+
+auto ar::setTitle(std::string_view title) noexcept -> void { }
+auto ar::messageBoxError(std::string_view error) noexcept -> void { }
+
+#endif
+
 auto ar::getWidth() noexcept -> i32_t
 {
     return g_wnd.width;
@@ -571,22 +648,14 @@ auto ar::getFramebufferAspectRatio() noexcept -> f32_t
     return static_cast<f32_t>(g_ctx.surfaceExtent.width) / g_ctx.surfaceExtent.height;
 }
 
-#endif
 #pragma endregion
-#pragma region Time Win32
+#pragma region Time
+#ifdef _WIN32
 
 static auto arTimer::create() noexcept -> void
 {
-    g_timer = {};
     ::QueryPerformanceFrequency(&g_timer.frequency);
     ::QueryPerformanceCounter(&g_timer.timeOffset);
-}
-
-auto arTimer::update() noexcept -> void
-{
-    auto now{ ar::getTime() };
-    g_timer.deltaTime = now - g_timer.previousTime;
-    g_timer.previousTime = now;
 }
 
 auto ar::getTime() noexcept -> f64_t
@@ -595,6 +664,45 @@ auto ar::getTime() noexcept -> f64_t
     ::QueryPerformanceCounter(&value);
 
     return static_cast<f64_t>(value.QuadPart - g_timer.timeOffset.QuadPart) / g_timer.frequency.QuadPart;
+}
+
+#else
+
+static auto arTimer::create() noexcept -> void
+{
+    g_timer.clock = CLOCK_REALTIME;
+
+#if defined(_POSIX_MONOTONIC_CLOCK)
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+    {
+        g_timer.clock = CLOCK_MONOTONIC;
+    }
+#else
+    struct timespec ts;
+#endif
+
+    clock_gettime(g_timer.clock, &ts);
+    g_timer.timeOffset = static_cast<u64_t>(ts.tv_sec) * g_timer.s_frequency + static_cast<u64_t>(ts.tv_nsec);
+}
+
+auto ar::getTime() noexcept -> f64_t
+{
+    struct timespec ts;
+    clock_gettime(g_timer.clock, &ts);
+
+    u64_t current = static_cast<u64_t>(ts.tv_sec) * g_timer.s_frequency + static_cast<u64_t>(ts.tv_nsec);
+
+    return static_cast<f64_t>(current - g_timer.timeOffset) / g_timer.s_frequency;
+}
+
+#endif
+
+auto arTimer::update() noexcept -> void
+{
+    auto now{ ar::getTime() };
+    g_timer.deltaTime = now - g_timer.previousTime;
+    g_timer.previousTime = now;
 }
 
 auto ar::getTimef() noexcept -> f32_t
@@ -687,17 +795,23 @@ auto ar::getCursorDeltaY() noexcept -> i32_t
 
 auto ar::setCursorPosition(i32_t x, i32_t y) noexcept -> void
 {
+#ifdef _WIN32
     ::SetCursorPos(x, y);
+#endif
 }
 
 auto ar::showCursor() noexcept -> void
 {
+#ifdef _WIN32
     while (::ShowCursor(1) < 0);
+#endif
 }
 
 auto ar::hideCursor() noexcept -> void
 {
+#ifdef _WIN32
     while (::ShowCursor(0) >= 0);
+#endif
 }
 
 #pragma endregion
@@ -709,9 +823,7 @@ auto ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept -> void
     auto usingDepth{ false };
 
     usingDepth = static_cast<b8_t>(usingDepth + (barrier.oldLayout == ar::ImageLayout::eDepthAttachment));
-    usingDepth = static_cast<b8_t>(usingDepth + (barrier.oldLayout == ar::ImageLayout::eDepthReadOnly));
-    usingDepth = static_cast<b8_t>(usingDepth + (barrier.newLayout == ar::ImageLayout::eDepthAttachment));
-    usingDepth = static_cast<b8_t>(usingDepth + (barrier.newLayout == ar::ImageLayout::eDepthReadOnly));    
+    usingDepth = static_cast<b8_t>(usingDepth + (barrier.newLayout == ar::ImageLayout::eDepthAttachment));  
 
     auto imageBarrier{ VkImageMemoryBarrier2{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -945,6 +1057,7 @@ auto ar::GraphicsCommands::endPresent() noexcept -> void
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
             .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
             .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             .srcQueueFamilyIndex = g_ctx.graphicsFamily,
@@ -1113,6 +1226,8 @@ auto ar::Shader::create(std::string_view path, Constants const& constants) noexc
         .pSpecializationInfo = &spec
     };
 
+#ifdef _WIN32
+
     auto const file{ ::CreateFileA(
         path.data(),
         GENERIC_READ,
@@ -1145,6 +1260,7 @@ auto ar::Shader::create(std::string_view path, Constants const& constants) noexc
 
     ::CloseHandle(file);
 
+
     auto const shaderModuleCI{ VkShaderModuleCreateInfo{
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = static_cast<size_t>(fileSize.QuadPart),
@@ -1159,6 +1275,7 @@ auto ar::Shader::create(std::string_view path, Constants const& constants) noexc
     ));
 
     delete[] pBuffer;
+#endif
 }
 
 auto ar::Shader::create(u32_t const* pSpirv, size_t size, ShaderStage stage, Constants const& constants) noexcept -> void
@@ -1506,7 +1623,7 @@ static auto makeImageResident(ar::ImageCreateInfo const& imageCI, ar::Image& ima
     if (imageCI.sampler)
     {
         auto const writeImage{ VkDescriptorImageInfo{
-            .sampler = *(&g_ctx.linearToEdgeSampler + (static_cast<u8_t>(imageCI.sampler) - 1ui8)),
+            .sampler = *(&g_ctx.linearToEdgeSampler + (static_cast<u8_t>(imageCI.sampler) - 1)),
             .imageView = image.view,
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         }};
@@ -1597,7 +1714,7 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
         .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = layouts[!sampler * (usage + 1ui8)],
+        .newLayout = layouts[!sampler * (usage + 1)],
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = handle,
@@ -1721,6 +1838,8 @@ static auto arContext::create() noexcept -> void
             VK_KHR_SURFACE_EXTENSION_NAME,
             #ifdef VK_KHR_win32_surface
             VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+            #else
+            VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
             #endif
             #ifdef AR_ENABLE_INFO_CALLBACK
             VK_EXT_DEBUG_UTILS_EXTENSION_NAME
@@ -1794,14 +1913,14 @@ static auto arContext::create() noexcept -> void
                     void* pUserData
                 )
                 {
-                    static_cast<void(*)(std::string_view)>(
+                    reinterpret_cast<void(*)(std::string_view)>(
                         pUserData
                     )(pCallbackData->pMessage);
 
                     return 0u;
                 }
             },
-            .pUserData = g_infoCallback
+            .pUserData = reinterpret_cast<void*>(g_infoCallback)
         }};
 
         arContext::resultCheck(
@@ -1821,6 +1940,16 @@ static auto arContext::create() noexcept -> void
         }};
 
         arContext::resultCheck(vkCreateWin32SurfaceKHR(g_ctx.instance, &surfaceCI, nullptr, &g_ctx.surface));
+    }
+    #else
+    {
+        auto const surfaceCI{ VkXlibSurfaceCreateInfoKHR{
+            .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+            .dpy = g_wnd.dpy,
+            .window = g_wnd.xwnd
+        }};
+
+        arContext::resultCheck(vkCreateXlibSurfaceKHR(g_ctx.instance, &surfaceCI, nullptr, &g_ctx.surface));
     }
     #endif
     {
@@ -2176,7 +2305,7 @@ static auto arContext::create() noexcept -> void
         ));
     }
 
-    AR_INFO_CALLBACK("Created Context")
+    AR_INFO_CALLBACK("%s", "Created Context")
 }
 
 static auto arContext::teardown() noexcept -> void
@@ -2211,7 +2340,7 @@ static auto arContext::teardown() noexcept -> void
     #endif
     vkDestroyInstance(g_ctx.instance, nullptr);
 
-    AR_INFO_CALLBACK("Destroyed Context")
+    AR_INFO_CALLBACK("%s", "Destroyed Context")
 }
 
 static auto arContext::createSwapchain() noexcept -> void
@@ -2417,6 +2546,8 @@ static auto arContext::createSwapchain() noexcept -> void
 
             auto const imageBarrier{ VkImageMemoryBarrier2{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
                 .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                 .srcQueueFamilyIndex = g_ctx.graphicsFamily,

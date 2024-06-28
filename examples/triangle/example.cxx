@@ -1,5 +1,6 @@
 #include "shader.inl"
 #include <Arline.hxx>
+#include <cstdio>
 
 static ar::Pipeline pipeline;
 static ar::Buffer vertexBuffer;

@@ -2,10 +2,30 @@
 #include <string_view>
 #include <cstdint>
 
-#pragma warning(push, 0)
+#ifdef _MSC_VER
+#   pragma warning(push, 0)
+#elif __clang__
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wunused-variable"
+#   pragma clang diagnostic ignored "-Wunused-function"
+#   pragma clang diagnostic ignored "-Wnullability-extension"
+#   pragma clang diagnostic ignored "-Wnullability-completeness"
+#elif __GNUC__
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wunused-variable"
+#   pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+
 #include "volk.hxx"
 #include "vma.hxx"
-#pragma warning(pop)
+
+#ifdef _MSC_VER
+#   pragma warning(pop)
+#elif __clang__
+#   pragma clang diagnostic pop
+#elif __GNUC__
+#   pragma GCC diagnostic pop
+#endif
 
 namespace ar
 {
@@ -98,91 +118,95 @@ namespace ar
 
     enum class Button : u8_t
     {
-        eLeft            = 0x00ui8,
-        eRight           = 0x01ui8,
-        eMiddle          = 0x02ui8,
-        eSide1           = 0x03ui8,
-        eSide2           = 0x04ui8
+        eLeft            = 0x00,
+        eRight           = 0x01,
+        eMiddle          = 0x02,
+        eSide1           = 0x03,
+        eSide2           = 0x04
     };
 
     enum class ShaderStage : u8_t
     {
-        eVertex          = 0x01ui8,
-        eFragment        = 0x10ui8,
-        eCompute         = 0x20ui8
+        eVertex          = 0x01,
+        eFragment        = 0x10,
+        eCompute         = 0x20
     };
 
     enum class Topology : u8_t
     {
-        ePoint           = 0x00ui8,
-        eLineList        = 0x01ui8,
-        eLineStrip       = 0x02ui8,
-        eTriangleList    = 0x03ui8,
-        eTriangleStrip   = 0x04ui8,
-        eTriangleFan     = 0x05ui8
+        ePoint           = 0x00,
+        eLineList        = 0x01,
+        eLineStrip       = 0x02,
+        eTriangleList    = 0x03,
+        eTriangleStrip   = 0x04,
+        eTriangleFan     = 0x05
     };
 
     enum class PolygonMode : u8_t
     {
-        eFill            = 0x00ui8,
-        eLine            = 0x01ui8,
-        ePoint           = 0x02ui8
+        eFill            = 0x00,
+        eLine            = 0x01,
+        ePoint           = 0x02
     };
 
     enum class CullMode : u8_t
     {
-        eNone            = 0x00ui8,
-        eFront           = 0x01ui8,
-        eBack            = 0x02ui8
+        eNone            = 0x00,
+        eFront           = 0x01,
+        eBack            = 0x02
     };
 
     enum class LoadOp : u8_t
     {
-        eLoad            = 0x00ui8,
-        eClear           = 0x01ui8,
-        eDontCare        = 0x02ui8
+        eLoad            = 0x00,
+        eClear           = 0x01,
+        eDontCare        = 0x02
     };
 
     enum class StoreOp : u8_t
     {
-        eStore           = 0x00ui8,
-        eDontCare        = 0x01ui8
+        eStore           = 0x00,
+        eDontCare        = 0x01
     };
 
     enum class ImageUsage : u8_t
     {
-        eColorAttachment = 0x00ui8,
-        eDepthAttachment = 0x01ui8
+        eColorAttachment = 0x00,
+        eDepthAttachment = 0x01
     };
 
     enum class ImageLayout : u8_t
     {
-        eColorAttachment = 0x02ui8,
-        eDepthAttachment = 0x03ui8,
-        eDepthReadOnly   = 0x04ui8,
-        eShaderReadOnly  = 0x05ui8
+        eColorAttachment = 0x02,
+        eDepthAttachment = 0x03,
+        eShaderReadOnly  = 0x05
     };
 
     enum CompareOp : u8_t
     {
-        eNever           = 0x00ui8,
-        eLess            = 0x01ui8,
-        eEqual           = 0x02ui8,
-        eLequal          = 0x03ui8,
-        eGreater         = 0x04ui8,
-        eNotEqual        = 0x05ui8,
-        eGequal          = 0x06ui8,
-        eAlways          = 0x07ui8
+        eNever           = 0x00,
+        eLess            = 0x01,
+        eEqual           = 0x02,
+        eLequal          = 0x03,
+        eGreater         = 0x04,
+        eNotEqual        = 0x05,
+        eGequal          = 0x06,
+        eAlways          = 0x07
     };
 
     enum Sampler : u8_t
     {
-        eNone            = 0x00ui8,
-        eLinearToEdge    = 0x01ui8,
-        eLinearRepeat    = 0x02ui8,
-        eNearestToEdge   = 0x03ui8,
-        eNearestRepeat   = 0x04ui8
+        eNone            = 0x00,
+        eLinearToEdge    = 0x01,
+        eLinearRepeat    = 0x02,
+        eNearestToEdge   = 0x03,
+        eNearestRepeat   = 0x04
     };
+
+#ifdef __clang__
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wmissing-braces"
+#endif
 
     union ClearColor
     {
@@ -200,6 +224,10 @@ namespace ar
         static consteval auto Magenta() -> ClearColor { return { 1.0f, 0.0f, 1.0f, 1.0f}; }
         static consteval auto Yellow()  -> ClearColor { return { 1.0f, 1.0f, 0.0f, 1.0f}; }
     };
+
+#ifdef __clang__
+#   pragma clang diagnostic pop
+#endif
 
     struct GraphicsCommands;
     struct AppInfo

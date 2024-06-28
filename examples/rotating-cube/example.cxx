@@ -1,6 +1,9 @@
 #include <Arline.hxx>
 #include "shader.inl"
 #include "vertices.inl"
+#include <cmath>
+#include <cstdio>
+#include <exception>
 
 struct SceneData
 {
