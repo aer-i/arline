@@ -1349,6 +1349,16 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
 {
     VkPipelineShaderStageCreateInfo shaderStages[6];
     VkPipelineColorBlendAttachmentState blendAttachments[8];
+    VkFormat const colorAttachmentFormats[8] = {
+        g_ctx.surfaceFormat.format,
+        g_ctx.surfaceFormat.format,
+        g_ctx.surfaceFormat.format,
+        g_ctx.surfaceFormat.format,
+        g_ctx.surfaceFormat.format,
+        g_ctx.surfaceFormat.format,
+        g_ctx.surfaceFormat.format,
+        g_ctx.surfaceFormat.format
+    };
 
     for (auto i{ size_t{} }; i < config.attachments.size(); ++i)
     {
@@ -1427,8 +1437,8 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
 
     auto const renderingCreateInfo{ VkPipelineRenderingCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-        .colorAttachmentCount = 1u,
-        .pColorAttachmentFormats = &g_ctx.surfaceFormat.format,
+        .colorAttachmentCount = static_cast<u32_t>(config.attachments.size()),
+        .pColorAttachmentFormats = colorAttachmentFormats,
         .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
         .stencilAttachmentFormat = VK_FORMAT_UNDEFINED
     }};
