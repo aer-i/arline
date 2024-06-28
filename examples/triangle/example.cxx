@@ -52,6 +52,7 @@ auto main() -> int
         .onCommandsRecord = recordCommands,
         .title = "Triangle",
         .width = 1280,
-        .height = 720
+        .height = 720,
+        .enalbeVsync = true
     });
 }

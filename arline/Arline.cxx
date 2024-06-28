@@ -45,6 +45,7 @@ struct ArlineContext
     DebugMessenger messenger;
     #endif
 
+    b8_t vsyncEnabled;
     VkInstance instance;
     VkSurfaceKHR surface;
     VkPhysicalDevice physicalDevice;
@@ -174,7 +175,7 @@ namespace arContext
     static auto teardown() noexcept -> void;
     static auto acquireImage() noexcept -> b8_t;
     static auto presentFrame() noexcept -> b8_t;
-    static auto createSwapchain() noexcept -> void;
+    static auto createSwapchain(b8_t vsync) noexcept -> void;
     static auto teardownSwapchain() noexcept -> void;
     static auto resultCheck(VkResult result) noexcept -> void;
     static auto beginTransfer() noexcept -> void;
@@ -197,7 +198,7 @@ auto ar::execute(AppInfo&& info) noexcept -> i32_t
         info.onResize = []{};
 
     if (!info.onResourcesUpdate)
-        info.onResourcesUpdate = []{ return false; };
+        info.onResourcesUpdate = []{ return Request::eNone; };
 
     if (!info.onUpdate)
         info.onUpdate = []{ ar::pollEvents(); };
@@ -229,6 +230,7 @@ auto ar::execute(AppInfo&& info) noexcept -> i32_t
 
     arWindow::create(info);
     arContext::create();
+    arContext::createSwapchain(info.enalbeVsync);
     arTimer::create();
 
     info.onInit();
@@ -276,9 +278,20 @@ auto ar::execute(AppInfo&& info) noexcept -> i32_t
             record();
         }
 
-        if (info.onResourcesUpdate()) [[unlikely]]
+        switch (info.onResourcesUpdate())
         {
+        [[likely]] case Request::eNone:
+            break;
+        [[unlikely]] case Request::eDisableVsync:
+            arContext::createSwapchain(false);
+            [[fallthrough]];
+        [[unlikely]] case Request::eRecordCommands:
             record();
+            break;
+        [[unlikely]] case Request::eEnableVsync:
+            arContext::createSwapchain(true);
+            record();
+            break;
         }
 
         if (!arContext::presentFrame()) [[unlikely]]
@@ -852,6 +865,11 @@ auto ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept -> void
         break;
     case eDepthAttachment:
         imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        imageBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        break;
+    case eDepthReadOnly:
+        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
         break;
     }
 
@@ -869,6 +887,10 @@ auto ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept -> void
     case eDepthAttachment:
         imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
         imageBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        break;
+    case eDepthReadOnly:
+        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
         break;
     }
 
@@ -1620,7 +1642,7 @@ auto ar::Buffer::write(void const* pData, size_t size, size_t offset) noexcept -
 
 static auto makeImageResident(ar::ImageCreateInfo const& imageCI, ar::Image& image) noexcept -> void
 {
-    if (imageCI.sampler)
+    if (static_cast<b8_t>(imageCI.sampler))
     {
         auto const writeImage{ VkDescriptorImageInfo{
             .sampler = *(&g_ctx.linearToEdgeSampler + (static_cast<u8_t>(imageCI.sampler) - 1)),
@@ -1681,7 +1703,7 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
         .mipLevels = 1u,
         .arrayLayers = 1u,
         .samples = VK_SAMPLE_COUNT_1_BIT,
-        .usage = sampler ? usages[usage] | VK_IMAGE_USAGE_SAMPLED_BIT : usages[usage]
+        .usage = static_cast<b8_t>(sampler) ? usages[usage] | VK_IMAGE_USAGE_SAMPLED_BIT : usages[usage]
     }};
 
     auto const allocationCI{ VmaAllocationCreateInfo{
@@ -1714,7 +1736,7 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
         .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = layouts[!sampler * (usage + 1)],
+        .newLayout = layouts[!static_cast<u8_t>(sampler) * (usage + 1)],
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = handle,
@@ -1768,7 +1790,7 @@ static auto arContext::acquireImage() noexcept -> b8_t
     [[likely]] case VK_SUCCESS:
         return true;
     [[unlikely]] case VK_ERROR_OUT_OF_DATE_KHR:
-        arContext::createSwapchain();
+        arContext::createSwapchain(g_ctx.vsyncEnabled);
         return false;
     default:
         arContext::resultCheck(result);
@@ -1810,7 +1832,7 @@ static auto arContext::presentFrame() noexcept -> b8_t
         return true;
     [[unlikely]] case VK_SUBOPTIMAL_KHR: [[fallthrough]];
     [[unlikely]] case VK_ERROR_OUT_OF_DATE_KHR:
-        createSwapchain();
+        createSwapchain(g_ctx.vsyncEnabled);
         return false;
     default:
         arContext::resultCheck(result);
@@ -2129,9 +2151,6 @@ static auto arContext::create() noexcept -> void
         arContext::resultCheck(vmaCreateAllocator(&allocatorCI, &g_ctx.allocator));
     }
     {
-        createSwapchain();
-    }
-    {
         auto const fenceCI{ VkFenceCreateInfo{
             .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
             .flags = VK_FENCE_CREATE_SIGNALED_BIT
@@ -2343,9 +2362,10 @@ static auto arContext::teardown() noexcept -> void
     AR_INFO_CALLBACK("%s", "Destroyed Context")
 }
 
-static auto arContext::createSwapchain() noexcept -> void
+static auto arContext::createSwapchain(b8_t vsync) noexcept -> void
 {
     arContext::teardownSwapchain();
+    g_ctx.vsyncEnabled = vsync;
 
     VkSurfaceFormatKHR formats[64];
     VkPresentModeKHR presentModes[6];
@@ -2443,16 +2463,17 @@ static auto arContext::createSwapchain() noexcept -> void
 
     auto presentMode{ VK_PRESENT_MODE_FIFO_KHR };
 
+    if (!vsync)
     for (auto i{ presentModeCount }; i--; )
     {
-        if (presentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR)
-        {
-            presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-        }
-
         if (presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
         {
             presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+        }
+
+        if (presentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR)
+        {
+            presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
             break;
         }
     }

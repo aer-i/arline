@@ -9,8 +9,8 @@ target_compile_features(arline PRIVATE cxx_std_23)
 target_sources(arline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/arline/Arline.cxx)
 target_include_directories(arline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/arline/)
 target_compile_options(arline PRIVATE
-$<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>
-$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wpedantic -Werror>
+$<$<CXX_COMPILER_ID:MSVC>:/W4>
+$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wpedantic>
 )
 
 if (UNIX)

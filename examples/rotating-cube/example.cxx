@@ -166,11 +166,11 @@ update() noexcept -> void
 }
 
 static auto
-resourcesUpdate() noexcept -> ar::b8_t
+resourcesUpdate() noexcept -> ar::Request
 {
     sceneBuffer.write(&sceneData);
 
-    return false;
+    return ar::Request::eNone;
 }
 
 static auto
@@ -179,7 +179,7 @@ infoCallback(std::string_view message) noexcept -> void
     std::printf("%s\n", message.data());
 }
 
-static auto
+[[noreturn]] static auto
 errorCallback(std::string_view message) noexcept -> void
 {
     ar::messageBoxError(message);
@@ -201,6 +201,7 @@ main() noexcept -> ar::i32_t
         .height = 720,
         .infoCallback = infoCallback,
         .errorCallback = errorCallback,
-        .enableValidationLayers = true
+        .enableValidationLayers = true,
+        .enalbeVsync = true
     });
 }

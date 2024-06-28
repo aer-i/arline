@@ -179,10 +179,11 @@ namespace ar
     {
         eColorAttachment = 0x02,
         eDepthAttachment = 0x03,
+        eDepthReadOnly   = 0x04,
         eShaderReadOnly  = 0x05
     };
 
-    enum CompareOp : u8_t
+    enum class CompareOp : u8_t
     {
         eNever           = 0x00,
         eLess            = 0x01,
@@ -194,13 +195,21 @@ namespace ar
         eAlways          = 0x07
     };
 
-    enum Sampler : u8_t
+    enum class Sampler : u8_t
     {
         eNone            = 0x00,
         eLinearToEdge    = 0x01,
         eLinearRepeat    = 0x02,
         eNearestToEdge   = 0x03,
         eNearestRepeat   = 0x04
+    };
+
+    enum class Request : u8_t
+    {
+        eNone            = 0x00,
+        eRecordCommands  = 0x01,
+        eEnableVsync     = 0x02,
+        eDisableVsync    = 0x03
     };
 
 #ifdef __clang__
@@ -232,17 +241,18 @@ namespace ar
     struct GraphicsCommands;
     struct AppInfo
     {
-        void (*onInit)();
-        void (*onDestroy)();
-        void (*onCommandsRecord)(GraphicsCommands);
-        b8_t (*onResourcesUpdate)();
-        void (*onUpdate)();
-        void (*onResize)();
+        void    (*onInit)();
+        void    (*onDestroy)();
+        void    (*onCommandsRecord)(GraphicsCommands);
+        Request (*onResourcesUpdate)();
+        void    (*onUpdate)();
+        void    (*onResize)();
         std::string_view title;
         i32_t width, height;
         callback_t infoCallback;
         callback_t errorCallback;
         b8_t enableValidationLayers;
+        b8_t enalbeVsync;
     };
 
     struct DrawIndirectCommand
