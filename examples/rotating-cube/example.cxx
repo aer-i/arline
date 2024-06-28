@@ -11,23 +11,46 @@ struct SceneData
     std::array<ar::f32_t, 16> cubeMatrix;
 };
 
-static ar::Image colorFramebuffer, depthFramebuffer;
+static ar::Image color, resolve, depth;
 static ar::Buffer vertexBuffer, colorBuffer, sceneBuffer;
 static ar::Pipeline pipeline, finalImagePipeline;
 static SceneData sceneData;
 
 static auto
-init() noexcept -> void
+createPerSwapchainResources() noexcept -> void
 {
-    colorFramebuffer.create({
+    color.create({
+        .layout = ar::ImageLayout::eShaderReadOnly,
         .usage = ar::ImageUsage::eColorAttachment,
         .sampler = ar::Sampler::eNearestToEdge,
-        .shaderArrayElement = 1u
+        .shaderArrayElement = 1u,
+        .useMsaa = true
     });
 
-    depthFramebuffer.create({
-        .usage = ar::ImageUsage::eDepthAttachment
+    resolve.create({
+        .layout = ar::ImageLayout::eColorAttachment,
+        .usage = ar::ImageUsage::eResolveAttachment
     });
+
+    depth.create({
+        .layout = ar::ImageLayout::eDepthAttachment,
+        .usage = ar::ImageUsage::eDepthAttachment,
+        .useMsaa = true
+    });
+}
+
+static auto
+destroyPerSwapchainResources() noexcept -> void
+{
+    depth.destroy();
+    resolve.destroy();
+    color.destroy();
+}
+
+static auto
+init() noexcept -> void
+{
+    createPerSwapchainResources();
 
     vertexBuffer.create(g_cubeVertices, sizeof(g_cubeVertices));
     colorBuffer.create(g_cubeColors, sizeof(g_cubeColors));
@@ -46,7 +69,8 @@ init() noexcept -> void
             .depthTestEnable = true,
             .depthWriteEnable = true,
             .compareOp = ar::CompareOp::eLess
-        }
+        },
+        .useMsaa = true
     });
 
     frag.destroy();
@@ -72,26 +96,17 @@ teardown() noexcept -> void
     sceneBuffer.destroy();
     colorBuffer.destroy();
     vertexBuffer.destroy();
-    depthFramebuffer.destroy();
-    colorFramebuffer.destroy();
     finalImagePipeline.destroy();
     pipeline.destroy();
+
+    destroyPerSwapchainResources();
 }
 
 static auto
 resize() noexcept -> void
 {
-    colorFramebuffer.destroy();
-    colorFramebuffer.create({
-        .usage = ar::ImageUsage::eColorAttachment,
-        .sampler = ar::Sampler::eNearestToEdge,
-        .shaderArrayElement = 1u
-    });
-
-    depthFramebuffer.destroy();
-    depthFramebuffer.create({
-        .usage = ar::ImageUsage::eDepthAttachment
-    });
+    destroyPerSwapchainResources();
+    createPerSwapchainResources();
 }
 
 static auto
@@ -104,26 +119,21 @@ recordCommands(ar::GraphicsCommands cmd) noexcept -> void
     };
 
     cmd.barrier({
-        .image = colorFramebuffer,
+        .image = color,
         .oldLayout = ar::ImageLayout::eShaderReadOnly,
         .newLayout = ar::ImageLayout::eColorAttachment
     });
 
-    cmd.barrier({
-        .image = depthFramebuffer,
-        .oldLayout = ar::ImageLayout::eDepthAttachment,
-        .newLayout = ar::ImageLayout::eDepthAttachment
-    });
-
     cmd.beginRendering({
         ar::ColorAttachment{
-            .image = colorFramebuffer,
+            .image = color,
+            .pResolve = &resolve,
             .loadOp = ar::LoadOp::eClear,
-            .storeOp = ar::StoreOp::eStore,
+            .storeOp = ar::StoreOp::eDontCare,
             .clearColor = ar::ClearColor{ 0.6f, 0.7f, 1.0f, 1.0f }
         }},
         ar::DepthAttachment{
-            .pImage = &depthFramebuffer,
+            .pImage = &depth,
             .loadOp = ar::LoadOp::eClear,
             .storeOp = ar::StoreOp::eDontCare
         }
@@ -136,7 +146,7 @@ recordCommands(ar::GraphicsCommands cmd) noexcept -> void
     cmd.endRendering();
 
     cmd.barrier({
-        .image = colorFramebuffer,
+        .image = color,
         .oldLayout = ar::ImageLayout::eColorAttachment,
         .newLayout = ar::ImageLayout::eShaderReadOnly
     });

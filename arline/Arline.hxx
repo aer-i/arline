@@ -172,7 +172,8 @@ namespace ar
     enum class ImageUsage : u8_t
     {
         eColorAttachment       = 0x00,
-        eDepthAttachment       = 0x01
+        eDepthAttachment       = 0x01,
+        eResolveAttachment     = 0x02
     };
 
     enum class ImageLayout : u8_t
@@ -352,7 +353,8 @@ namespace ar
 
     struct ColorAttachment
     {
-        Image& image;
+        Image const& image;
+        Image const* pResolve;
         LoadOp loadOp;
         StoreOp storeOp;
         ClearColor clearColor;
@@ -360,7 +362,7 @@ namespace ar
 
     struct DepthAttachment
     {
-        Image* pImage;
+        Image const* pImage;
         LoadOp loadOp;
         StoreOp storeOp;
     };
@@ -369,9 +371,11 @@ namespace ar
     {
         u32_t width;
         u32_t height;
+        ImageLayout layout;
         ImageUsage usage;
         Sampler sampler;
         u32_t shaderArrayElement;
+        b8_t useMsaa;
     };
 
     struct MapEntry
@@ -427,6 +431,7 @@ namespace ar
         Topology    topology    = Topology::eTriangleList;
         PolygonMode polygonMode = PolygonMode::eFill;
         CullMode    cullMode    = CullMode::eNone;
+        b8_t        useMsaa     = false;
     };
 
     [[nodiscard]] auto execute(AppInfo&& info)     noexcept -> i32_t;

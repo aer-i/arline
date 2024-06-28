@@ -3,6 +3,7 @@
 
 #ifdef _WIN32
 #   define VK_USE_PLATFORM_WIN32_KHR
+#   define NOMINMAX
 #   include <dwmapi.h>
 #   pragma comment(lib, "dwmapi")
 #else
@@ -45,6 +46,7 @@ struct ArlineContext
     DebugMessenger messenger;
     #endif
 
+    u32_t sampleCount;
     b8_t vsyncEnabled;
     VkInstance instance;
     VkSurfaceKHR surface;
@@ -927,8 +929,15 @@ auto ar::GraphicsCommands::beginRendering(ColorAttachments colorAttachments, Dep
                         attachment->clearColor.int32[3]
                     }
                 }
-            }
+            },
         };
+
+        if (attachment->pResolve)
+        {
+            attachments[i].resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+            attachments[i].resolveImageView = attachment->pResolve->view;
+            attachments[i].resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        }
     }
 
     if (depthAttachment.pImage)
@@ -1414,7 +1423,8 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
 
     auto const multisampleStateCreateInfo{ VkPipelineMultisampleStateCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT
+        .rasterizationSamples = config.useMsaa ?
+            static_cast<VkSampleCountFlagBits>(g_ctx.sampleCount) : VK_SAMPLE_COUNT_1_BIT
     }};
 
     auto const colorBlendStateCreateInfo{ VkPipelineColorBlendStateCreateInfo{
@@ -1698,24 +1708,37 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
     height = static_cast<b8_t>(imageCreateInfo.height) * imageCreateInfo.height +
             !static_cast<b8_t>(imageCreateInfo.height) * g_ctx.surfaceExtent.height;
 
-    VkFormat const formats[] = { g_ctx.surfaceFormat.format, VK_FORMAT_D32_SFLOAT };
-    VkImageAspectFlags constexpr aspects[] = { VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_DEPTH_BIT };
-    VkImageUsageFlags constexpr usages[] = {
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-    };
-    VkImageLayout constexpr layouts[] = { 
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,  
-        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
-    };
+    VkFormat format;
+    VkImageAspectFlags aspect;
+    VkSampleCountFlagBits sampleCount;
+    VkImageUsageFlags usage{};
 
-    auto usage{ static_cast<u8_t>(imageCreateInfo.usage) };
+    switch (imageCreateInfo.usage)
+    {
+    case ImageUsage::eResolveAttachment:
+        usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+        [[fallthrough]];
+    case ImageUsage::eColorAttachment:
+        format = g_ctx.surfaceFormat.format;
+        aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        break;
+    case ImageUsage::eDepthAttachment:
+        format = VK_FORMAT_D32_SFLOAT;
+        aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        break;
+    default:
+        std::unreachable();
+    }
+
+    sampleCount = static_cast<VkSampleCountFlagBits>(!imageCreateInfo.useMsaa * VK_SAMPLE_COUNT_1_BIT + imageCreateInfo.useMsaa * g_ctx.sampleCount);
+    usage |= VK_IMAGE_USAGE_SAMPLED_BIT * static_cast<b8_t>(imageCreateInfo.sampler);
 
     auto const imageCI{ VkImageCreateInfo{
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
-        .format = formats[usage],
+        .format = format,
         .extent = {
             .width = width,
             .height = height,
@@ -1723,8 +1746,8 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
         },
         .mipLevels = 1u,
         .arrayLayers = 1u,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
-        .usage = static_cast<b8_t>(sampler) ? usages[usage] | VK_IMAGE_USAGE_SAMPLED_BIT : usages[usage]
+        .samples = sampleCount,
+        .usage = usage
     }};
 
     auto const allocationCI{ VmaAllocationCreateInfo{
@@ -1745,8 +1768,8 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
     view = arContext::createImageView(
         handle,
         VK_IMAGE_VIEW_TYPE_2D,
-        formats[usage],
-        aspects[usage],
+        format,
+        aspect,
         1u
     );
 
@@ -1757,12 +1780,12 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
         .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = layouts[!static_cast<u8_t>(sampler) * (usage + 1)],
+        .newLayout = static_cast<VkImageLayout>(imageCreateInfo.layout),
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = handle,
         .subresourceRange = {
-            .aspectMask = aspects[usage],
+            .aspectMask = aspect,
             .levelCount = 1u,
             .layerCount = 1u
         }
@@ -2024,6 +2047,7 @@ static auto arContext::create() noexcept -> void
                 continue;
 
             g_ctx.physicalDevice = physicalDevices[i];
+            g_ctx.sampleCount = std::min(4u, properties.properties.limits.framebufferColorSampleCounts);
 
             if (meshShaderFeatures.meshShader)
                 break;
