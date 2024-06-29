@@ -46,7 +46,6 @@ struct ArlineContext
     DebugMessenger messenger;
     #endif
 
-    u32_t sampleCount;
     b8_t vsyncEnabled;
     VkInstance instance;
     VkSurfaceKHR surface;
@@ -182,6 +181,8 @@ namespace arContext
     static auto resultCheck(VkResult result) noexcept -> void;
     static auto beginTransfer() noexcept -> void;
     static auto endTransfer() noexcept -> void;
+    static auto layoutToStage(ar::ImageLayout) noexcept -> VkPipelineStageFlags2;
+    static auto layoutToAccess(ar::ImageLayout) noexcept -> VkAccessFlags2;
     static auto createImageView(
         VkImage image,
         VkImageViewType type,
@@ -840,8 +841,12 @@ auto ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept -> void
     usingDepth = static_cast<b8_t>(usingDepth + (barrier.oldLayout == ar::ImageLayout::eDepthAttachment));
     usingDepth = static_cast<b8_t>(usingDepth + (barrier.newLayout == ar::ImageLayout::eDepthAttachment));  
 
-    auto imageBarrier{ VkImageMemoryBarrier2{
+    auto const imageBarrier{ VkImageMemoryBarrier2{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = arContext::layoutToStage(barrier.oldLayout),
+        .srcAccessMask = arContext::layoutToAccess(barrier.oldLayout),
+        .dstStageMask = arContext::layoutToStage(barrier.newLayout),
+        .dstAccessMask = arContext::layoutToAccess(barrier.newLayout),
         .oldLayout = static_cast<VkImageLayout>(barrier.oldLayout),
         .newLayout = static_cast<VkImageLayout>(barrier.newLayout),
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -853,48 +858,6 @@ auto ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept -> void
             .layerCount = VK_REMAINING_ARRAY_LAYERS
         }
     }};
-
-    switch (barrier.oldLayout)
-    {
-    using enum ar::ImageLayout;
-    case eShaderReadOnly:
-        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-        imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-        break;
-    case eColorAttachment:
-        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        imageBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-        break;
-    case eDepthAttachment:
-        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-        imageBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        break;
-    case eDepthReadOnly:
-        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-        imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-        break;
-    }
-
-    switch (barrier.newLayout)
-    {
-    using enum ar::ImageLayout;
-    case eShaderReadOnly:
-        imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-        imageBarrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-        break;
-    case eColorAttachment:
-        imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        imageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-        break;
-    case eDepthAttachment:
-        imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-        imageBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        break;
-    case eDepthReadOnly:
-        imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-        imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-        break;
-    }
 
     auto const dependency{ VkDependencyInfo{
         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
@@ -954,6 +917,13 @@ auto ar::GraphicsCommands::beginRendering(ColorAttachments colorAttachments, Dep
                 }
             }
         };
+
+        if (depthAttachment.pResolve)
+        {
+            attachments[8].resolveMode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+            attachments[8].resolveImageView = depthAttachment.pResolve->view;
+            attachments[8].resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        }
     }
 
     auto const renderingInfo{ VkRenderingInfo{
@@ -1423,8 +1393,7 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
 
     auto const multisampleStateCreateInfo{ VkPipelineMultisampleStateCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .rasterizationSamples = config.useMsaa ?
-            static_cast<VkSampleCountFlagBits>(g_ctx.sampleCount) : VK_SAMPLE_COUNT_1_BIT
+        .rasterizationSamples = config.useMsaa ? VK_SAMPLE_COUNT_4_BIT : VK_SAMPLE_COUNT_1_BIT
     }};
 
     auto const colorBlendStateCreateInfo{ VkPipelineColorBlendStateCreateInfo{
@@ -1711,17 +1680,14 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
     VkFormat format;
     VkImageAspectFlags aspect;
     VkSampleCountFlagBits sampleCount;
-    VkImageUsageFlags usage{};
+    VkImageUsageFlags usage;
 
     switch (imageCreateInfo.usage)
     {
-    case ImageUsage::eResolveAttachment:
-        usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-        [[fallthrough]];
     case ImageUsage::eColorAttachment:
         format = g_ctx.surfaceFormat.format;
         aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-        usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         break;
     case ImageUsage::eDepthAttachment:
         format = VK_FORMAT_D32_SFLOAT;
@@ -1732,8 +1698,9 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
         std::unreachable();
     }
 
-    sampleCount = static_cast<VkSampleCountFlagBits>(!imageCreateInfo.useMsaa * VK_SAMPLE_COUNT_1_BIT + imageCreateInfo.useMsaa * g_ctx.sampleCount);
+    sampleCount = imageCreateInfo.useMsaa ? VK_SAMPLE_COUNT_4_BIT : VK_SAMPLE_COUNT_1_BIT;
     usage |= VK_IMAGE_USAGE_SAMPLED_BIT * static_cast<b8_t>(imageCreateInfo.sampler);
+    usage |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT * imageCreateInfo.useMsaa;
 
     auto const imageCI{ VkImageCreateInfo{
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -1777,8 +1744,8 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
 
     auto const imageBarrier{ VkImageMemoryBarrier2{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .dstStageMask = arContext::layoutToStage(imageCreateInfo.layout),
+        .dstAccessMask = arContext::layoutToAccess(imageCreateInfo.layout),
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout = static_cast<VkImageLayout>(imageCreateInfo.layout),
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -2047,7 +2014,6 @@ static auto arContext::create() noexcept -> void
                 continue;
 
             g_ctx.physicalDevice = physicalDevices[i];
-            g_ctx.sampleCount = std::min(4u, properties.properties.limits.framebufferColorSampleCounts);
 
             if (meshShaderFeatures.meshShader)
                 break;
@@ -2690,6 +2656,39 @@ static auto arContext::endTransfer() noexcept -> void
 
     arContext::resultCheck(vkQueueSubmit(g_ctx.graphicsQueue, 1u, &submitInfo, nullptr));
     arContext::resultCheck(vkQueueWaitIdle(g_ctx.graphicsQueue));
+}
+
+auto arContext::layoutToStage(ar::ImageLayout layout) noexcept -> VkPipelineStageFlags2
+{
+    switch (layout)
+    {
+    case ar::ImageLayout::eColorAttachment:
+        return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    case ar::ImageLayout::eShaderReadOnly:
+        return VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+    case ar::ImageLayout::eDepthReadOnly: [[fallthrough]];
+    case ar::ImageLayout::eDepthAttachment:
+        return VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+    default:
+        std::unreachable();
+    }
+}
+
+auto arContext::layoutToAccess(ar::ImageLayout layout) noexcept -> VkAccessFlags2
+{
+    switch (layout)
+    {
+    case ar::ImageLayout::eColorAttachment:
+        return VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+    case ar::ImageLayout::eShaderReadOnly:
+        return VK_ACCESS_2_SHADER_READ_BIT;
+    case ar::ImageLayout::eDepthReadOnly:
+        return VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    case ar::ImageLayout::eDepthAttachment:
+        return VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    default:
+        std::unreachable();
+    }
 }
 
 static auto arContext::createImageView(

@@ -20,16 +20,16 @@ static auto
 createPerSwapchainResources() noexcept -> void
 {
     color.create({
-        .layout = ar::ImageLayout::eShaderReadOnly,
+        .layout = ar::ImageLayout::eColorAttachment,
         .usage = ar::ImageUsage::eColorAttachment,
-        .sampler = ar::Sampler::eNearestToEdge,
-        .shaderArrayElement = 1u,
         .useMsaa = true
     });
 
     resolve.create({
-        .layout = ar::ImageLayout::eColorAttachment,
-        .usage = ar::ImageUsage::eResolveAttachment
+        .layout = ar::ImageLayout::eShaderReadOnly,
+        .usage = ar::ImageUsage::eColorAttachment,
+        .sampler = ar::Sampler::eNearestToEdge,
+        .shaderArrayElement = 1u,
     });
 
     depth.create({
@@ -119,7 +119,7 @@ recordCommands(ar::GraphicsCommands cmd) noexcept -> void
     };
 
     cmd.barrier({
-        .image = color,
+        .image = resolve,
         .oldLayout = ar::ImageLayout::eShaderReadOnly,
         .newLayout = ar::ImageLayout::eColorAttachment
     });
@@ -146,7 +146,7 @@ recordCommands(ar::GraphicsCommands cmd) noexcept -> void
     cmd.endRendering();
 
     cmd.barrier({
-        .image = color,
+        .image = resolve,
         .oldLayout = ar::ImageLayout::eColorAttachment,
         .newLayout = ar::ImageLayout::eShaderReadOnly
     });

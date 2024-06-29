@@ -172,8 +172,7 @@ namespace ar
     enum class ImageUsage : u8_t
     {
         eColorAttachment       = 0x00,
-        eDepthAttachment       = 0x01,
-        eResolveAttachment     = 0x02
+        eDepthAttachment       = 0x01
     };
 
     enum class ImageLayout : u8_t
@@ -363,6 +362,7 @@ namespace ar
     struct DepthAttachment
     {
         Image const* pImage;
+        Image const* pResolve;
         LoadOp loadOp;
         StoreOp storeOp;
     };
