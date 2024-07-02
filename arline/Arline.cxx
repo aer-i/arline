@@ -926,13 +926,23 @@ auto ar::GraphicsCommands::beginRendering(ColorAttachments colorAttachments, Dep
         }
     }
 
+    VkExtent2D extent;
+
+    if (colorAttachments.size())
+    {
+        extent.width = colorAttachments.begin()->image.width;
+        extent.height = colorAttachments.begin()->image.height;
+    }
+    else
+    {
+        extent.width = depthAttachment.pImage->width;
+        extent.height = depthAttachment.pImage->height;
+    }
+
     auto const renderingInfo{ VkRenderingInfo{
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .renderArea = {
-            .extent = {
-                .width = colorAttachments.begin()->image.width,
-                .height = colorAttachments.begin()->image.height
-            }
+            .extent = extent
         },
         .layerCount = 1u,
         .colorAttachmentCount = static_cast<u32_t>(colorAttachments.size()),
@@ -1087,6 +1097,26 @@ auto ar::GraphicsCommands::bindPipeline(Pipeline const& pipeline) noexcept -> vo
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipeline.handle
+    );
+}
+
+auto ar::GraphicsCommands::bindIndexBuffer16(Buffer const& buffer) noexcept -> void
+{
+    vkCmdBindIndexBuffer(
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
+        buffer.handle,
+        0ull,
+        VK_INDEX_TYPE_UINT16   
+    );
+}
+
+auto ar::GraphicsCommands::bindIndexBuffer32(Buffer const& buffer) noexcept -> void
+{
+     vkCmdBindIndexBuffer(
+        g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
+        buffer.handle,
+        0ull,
+        VK_INDEX_TYPE_UINT32 
     );
 }
 

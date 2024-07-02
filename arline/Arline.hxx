@@ -514,6 +514,8 @@ namespace ar
         auto beginPresent() noexcept -> void;
         auto endPresent() noexcept -> void;
         auto bindPipeline(Pipeline const& pipeline) noexcept -> void;
+        auto bindIndexBuffer16(Buffer const& buffer) noexcept -> void;
+        auto bindIndexBuffer32(Buffer const& buffer) noexcept -> void;
         auto draw(u32_t vertexCount, u32_t instanceCount = 1u, u32_t vertex = 0u, u32_t instance = 0u) noexcept -> void;
         auto drawIndexed(u32_t indexCount, u32_t instanceCount = 1u, u32_t index = 0u, i32_t vertexOffset = 0, u32_t instance = 0u) noexcept -> void;
         auto drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = s_id) noexcept -> void;
