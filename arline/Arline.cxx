@@ -2136,6 +2136,8 @@ static auto arContext::create() noexcept -> void
         auto features12{ VkPhysicalDeviceVulkan12Features{
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext = &features11,
+            .storageBuffer8BitAccess = 1u,
+            .shaderInt8 = 1u,
             .descriptorBindingPartiallyBound = 1u,
             .bufferDeviceAddress = 1u
         }};
