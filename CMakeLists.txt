@@ -13,10 +13,6 @@ $<$<CXX_COMPILER_ID:MSVC>:/W4>
 $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wpedantic>
 )
 
-if (UNIX)
-    target_link_libraries(arline PRIVATE X11)
-endif()
-
 if (AR_ENABLE_INFO_CALLBACK)
     target_compile_definitions(arline PRIVATE AR_ENABLE_INFO_CALLBACK)
 endif()

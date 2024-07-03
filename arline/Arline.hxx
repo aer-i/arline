@@ -1,7 +1,4 @@
 #pragma once
-#include <string_view>
-#include <cstdint>
-
 #ifdef _MSC_VER
 #   pragma warning(push, 0)
 #elif __clang__
@@ -18,6 +15,7 @@
 
 #include "volk.hxx"
 #include "vma.hxx"
+#include <initializer_list>
 
 #ifdef _MSC_VER
 #   pragma warning(pop)
@@ -31,92 +29,120 @@ namespace ar
 {
     namespace types
     {
-        using callback_t = void(*)(std::string_view);
-        using u8_t  = std::uint8_t;
-        using u16_t = std::uint16_t;
-        using u32_t = std::uint32_t;
-        using u64_t = std::uint64_t;
-        using i8_t  = std::int8_t;
-        using i16_t = std::int16_t;
-        using i32_t = std::int32_t;
-        using i64_t = std::int64_t;
-        using f32_t = float;
-        using f64_t = double;
-        using b8_t  = bool;
+        using b8  = bool;
+        using u8  = unsigned char;
+        using s8  = signed char;
+        using u16 = unsigned short;
+        using s16 = short;
+        using u32 = unsigned int;
+        using s32 = int;
+        using u64 = unsigned long long;
+        using s64 = long long;
+        using f32 = float;
+        using f64 = double;
     }
 
-    using types::callback_t;
-    using types::u8_t;
-    using types::u16_t;
-    using types::u32_t;
-    using types::u64_t;
-    using types::i8_t;
-    using types::i16_t;
-    using types::i32_t;
-    using types::i64_t;
-    using types::f32_t;
-    using types::f64_t;
-    using types::b8_t;
+    using types::b8;
+    using types::u8;
+    using types::s8;
+    using types::u16;
+    using types::s16;
+    using types::u32;
+    using types::s32;
+    using types::u64;
+    using types::s64;
+    using types::f32;
+    using types::f64;
 
-    enum class Key : u8_t
+    enum class Key : u8
     {
-        eA,
-        eB,
-        eC,
-        eD,
-        eE,
-        eF,
-        eG,
-        eH,
-        eI,
-        eJ,
-        eK,
-        eL,
-        eM,
-        eN,
-        eO,
-        eP,
-        eQ,
-        eR,
-        eS,
-        eT,
-        eU,
-        eV,
-        eW,
-        eX,
-        eY,
-        eZ,
-        e0,
-        e1,
-        e2,
-        e3,
-        e4,
-        e5,
-        e6,
-        e7,
-        e8,
-        e9,
-        eSpace,
-        eEscape,
-        eEnter,
-        eBackspace,
-        eTab,
-        eMinus,
-        ePlus,
-        eLeftShift,
-        eLeftCtrl,
-        eLeftAlt,
-        eRightShift,
-        eRightCtrl,
-        eRightAlt,
-        eLeft,
-        eUp,
-        eRight,
-        eDown,
-        eMaxEnum
+        eUnknown               = 0x00,
+        eA                     = 0x01,
+        eB                     = 0x02,
+        eC                     = 0x03,
+        eD                     = 0x04,
+        eE                     = 0x05,
+        eF                     = 0x06,
+        eG                     = 0x07,
+        eH                     = 0x08,
+        eI                     = 0x09,
+        eJ                     = 0x0a,
+        eK                     = 0x0b,
+        eL                     = 0x0c,
+        eM                     = 0x0d,
+        eN                     = 0x0e,
+        eO                     = 0x0f,
+        eP                     = 0x10,
+        eQ                     = 0x11,
+        eR                     = 0x12,
+        eS                     = 0x13,
+        eT                     = 0x14,
+        eU                     = 0x15,
+        eV                     = 0x16,
+        eW                     = 0x17,
+        eX                     = 0x18,
+        eY                     = 0x19,
+        eZ                     = 0x1a,
+        e0                     = 0x1b,
+        e1                     = 0x1c,
+        e2                     = 0x1d,
+        e3                     = 0x1e,
+        e4                     = 0x1f,
+        e5                     = 0x20,
+        e6                     = 0x21,
+        e7                     = 0x22,
+        e8                     = 0x23,
+        e9                     = 0x24,
+        eF1                    = 0x25,
+        eF2                    = 0x26,
+        eF3                    = 0x27,
+        eF4                    = 0x28,
+        eF5                    = 0x29,
+        eF6                    = 0x2a,
+        eF7                    = 0x2b,
+        eF8                    = 0x2c,
+        eF9                    = 0x2d,
+        eF10                   = 0x2e,
+        eF11                   = 0x2f,
+        eF12                   = 0x30,
+        eSpace                 = 0x31,
+        eApostrophe            = 0x32,
+        eComma                 = 0x33,
+        eMinus                 = 0x34,
+        ePeriod                = 0x35,
+        eSlash                 = 0x36,
+        eSemicolon             = 0x37,
+        ePlus                  = 0x38,
+        eLBracket              = 0x39,
+        eRBracket              = 0x3a,
+        eBackslash             = 0x3b,
+        eGraveAccent           = 0x3c,
+        eEscape                = 0x3d,
+        eEnter                 = 0x3e,
+        eTab                   = 0x3f,
+        eBackspace             = 0x40,
+        eInsert                = 0x41,
+        eDelete                = 0x42,
+        eRight                 = 0x43,
+        eLeft                  = 0x44,
+        eDown                  = 0x45,
+        eUp                    = 0x46,
+        ePageDown              = 0x47,
+        ePageUp                = 0x48,
+        eHome                  = 0x49,
+        eEnd                   = 0x4a,
+        eCapsLock              = 0x4b,
+        eScrollLock            = 0x4c,
+        ePrintScreen           = 0x4d,
+        ePause                 = 0x4e,
+        eShift                 = 0x4f,
+        eCtrl                  = 0x50,
+        eAlt                   = 0x51,
+        eSuper                 = 0x52,
+        eMenu                  = 0x53
     };
 
-    enum class Button : u8_t
+    enum class Button : u8
     {
         eLeft                  = 0x00,
         eRight                 = 0x01,
@@ -125,14 +151,14 @@ namespace ar
         eSide2                 = 0x04
     };
 
-    enum class ShaderStage : u8_t
+    enum class ShaderStage : u8
     {
         eVertex                = 0x01,
         eFragment              = 0x10,
         eCompute               = 0x20
     };
 
-    enum class Topology : u8_t
+    enum class Topology : u8
     {
         ePoint                 = 0x00,
         eLineList              = 0x01,
@@ -142,40 +168,40 @@ namespace ar
         eTriangleFan           = 0x05
     };
 
-    enum class PolygonMode : u8_t
+    enum class PolygonMode : u8
     {
         eFill                  = 0x00,
         eLine                  = 0x01,
         ePoint                 = 0x02
     };
 
-    enum class CullMode : u8_t
+    enum class CullMode : u8
     {
         eNone                  = 0x00,
         eFront                 = 0x01,
         eBack                  = 0x02
     };
 
-    enum class LoadOp : u8_t
+    enum class LoadOp : u8
     {
         eLoad                  = 0x00,
         eClear                 = 0x01,
         eDontCare              = 0x02
     };
 
-    enum class StoreOp : u8_t
+    enum class StoreOp : u8
     {
         eStore                 = 0x00,
         eDontCare              = 0x01
     };
 
-    enum class ImageUsage : u8_t
+    enum class ImageUsage : u8
     {
         eColorAttachment       = 0x00,
         eDepthAttachment       = 0x01
     };
 
-    enum class ImageLayout : u8_t
+    enum class ImageLayout : u8
     {
         eColorAttachment       = 0x02,
         eDepthAttachment       = 0x03,
@@ -183,7 +209,7 @@ namespace ar
         eShaderReadOnly        = 0x05
     };
 
-    enum class CompareOp : u8_t
+    enum class CompareOp : u8
     {
         eNever                 = 0x00,
         eLess                  = 0x01,
@@ -195,7 +221,7 @@ namespace ar
         eAlways                = 0x07
     };
 
-    enum class Sampler : u8_t
+    enum class Sampler : u8
     {
         eNone                  = 0x00,
         eLinearToEdge          = 0x01,
@@ -204,7 +230,7 @@ namespace ar
         eNearestRepeat         = 0x04
     };
 
-    enum class Request : u8_t
+    enum class Request : u8
     {
         eNone                  = 0x00,
         eRecordCommands        = 0x01,
@@ -212,7 +238,7 @@ namespace ar
         eDisableVsync          = 0x03
     };
 
-    enum class BlendOp : u8_t
+    enum class BlendOp : u8
     {
         eAdd                   = 0x00,
         eSubtract              = 0x01,
@@ -221,7 +247,7 @@ namespace ar
         eMax                   = 0x04
     };
 
-    enum class BlendFactor : u8_t
+    enum class BlendFactor : u8
     {
         eZero                  = 0x00,
         eOne                   = 0x01,
@@ -244,7 +270,7 @@ namespace ar
         eOneMinusSrcApha1      = 0x12
     };
 
-    enum class ColorComponent : u8_t
+    enum class ColorComponent : u8
     {
         eR                     = 0x01,
         eG                     = 0x02,
@@ -270,19 +296,19 @@ namespace ar
 
     union ClearColor
     {
-        f32_t float32[4];
-        u32_t uint32[4];
-        i32_t int32[4];
+        f32 float32[4];
+        u32 uint32[4];
+        s32 int32[4];
 
-        static consteval auto Blank()   -> ClearColor { return { 0.0f, 0.0f, 0.0f, 0.0f}; }
-        static consteval auto Black()   -> ClearColor { return { 0.0f, 0.0f, 0.0f, 1.0f}; }
-        static consteval auto White()   -> ClearColor { return { 1.0f, 1.0f, 1.0f, 1.0f}; }
-        static consteval auto Red()     -> ClearColor { return { 1.0f, 0.0f, 0.0f, 1.0f}; }
-        static consteval auto Green()   -> ClearColor { return { 0.0f, 1.0f, 0.0f, 1.0f}; }
-        static consteval auto Blue()    -> ClearColor { return { 0.0f, 0.0f, 1.0f, 1.0f}; }
-        static consteval auto Cyan()    -> ClearColor { return { 0.0f, 1.0f, 1.0f, 1.0f}; }
-        static consteval auto Magenta() -> ClearColor { return { 1.0f, 0.0f, 1.0f, 1.0f}; }
-        static consteval auto Yellow()  -> ClearColor { return { 1.0f, 1.0f, 0.0f, 1.0f}; }
+        static consteval auto Blank()   -> ClearColor { return {0.0f, 0.0f, 0.0f, 0.0f}; }
+        static consteval auto Black()   -> ClearColor { return {0.0f, 0.0f, 0.0f, 1.0f}; }
+        static consteval auto White()   -> ClearColor { return {1.0f, 1.0f, 1.0f, 1.0f}; }
+        static consteval auto Red()     -> ClearColor { return {1.0f, 0.0f, 0.0f, 1.0f}; }
+        static consteval auto Green()   -> ClearColor { return {0.0f, 1.0f, 0.0f, 1.0f}; }
+        static consteval auto Blue()    -> ClearColor { return {0.0f, 0.0f, 1.0f, 1.0f}; }
+        static consteval auto Cyan()    -> ClearColor { return {0.0f, 1.0f, 1.0f, 1.0f}; }
+        static consteval auto Magenta() -> ClearColor { return {1.0f, 0.0f, 1.0f, 1.0f}; }
+        static consteval auto Yellow()  -> ClearColor { return {1.0f, 1.0f, 0.0f, 1.0f}; }
     };
 
 #ifdef __clang__
@@ -292,23 +318,22 @@ namespace ar
     struct GraphicsCommands;
     struct AppInfo
     {
+        void    (*infoCallback)(char const*);
+        void    (*errorCallback)(char const*);
         void    (*onInit)();
         void    (*onDestroy)();
-        void    (*onCommandsRecord)(GraphicsCommands);
-        Request (*onResourcesUpdate)();
-        void    (*onUpdate)();
         void    (*onResize)();
-        std::string_view title;
-        i32_t width, height;
-        callback_t infoCallback;
-        callback_t errorCallback;
-        b8_t enableValidationLayers;
-        b8_t enalbeVsync;
+        void    (*onCommandsRecord)(GraphicsCommands);
+        void    (*onUpdate)();
+        Request (*onResourcesUpdate)();
+        s32       width, height;
+        b8        enableValidationLayers;
+        b8        enalbeVsync;
     };
 
     struct BlendAttachment
     {
-        b8_t blendEnable;
+        b8 blendEnable;
         BlendOp colorBlendOp;
         BlendOp alphaBlendOp;
         BlendFactor srcColorFactor;
@@ -320,25 +345,25 @@ namespace ar
 
     struct DrawIndirectCommand
     {
-        u32_t vertexCount;
-        u32_t instanceCount;
-        u32_t vertex;
-        u32_t instance;
+        u32 vertexCount;
+        u32 instanceCount;
+        u32 vertex;
+        u32 instance;
     };
 
     struct DrawIndexedIndirectCommand
     {
-        u32_t indexCount;
-        u32_t instanceCount;
-        u32_t index;
-        i32_t vertexOffset;
-        u32_t instance;
+        u32 indexCount;
+        u32 instanceCount;
+        u32 index;
+        s32 vertexOffset;
+        u32 instance;
     };
 
     struct DepthStencilState
     {
-        b8_t depthTestEnable;
-        b8_t depthWriteEnable;
+        b8 depthTestEnable;
+        b8 depthWriteEnable;
         CompareOp compareOp;
     };
 
@@ -369,19 +394,19 @@ namespace ar
 
     struct ImageCreateInfo
     {
-        u32_t width;
-        u32_t height;
+        u32 width;
+        u32 height;
         ImageLayout layout;
         ImageUsage usage;
         Sampler sampler;
-        u32_t shaderArrayElement;
-        b8_t useMsaa;
+        u32 shaderArrayElement;
+        b8 useMsaa;
     };
 
     struct MapEntry
     {
-        u32_t id;
-        u32_t offset;
+        u32 id;
+        u32 offset;
         size_t size;
     };
 
@@ -408,8 +433,8 @@ namespace ar
         VkBuffer handle;
         VmaAllocation allocation;
         size_t capacity;
-        u64_t address;
-        u8_t* pMapped;
+        u64 address;
+        u8* pMapped;
     };
 
     struct ImageHandle
@@ -418,9 +443,9 @@ namespace ar
         VkImageView view;
         VmaAllocation allocation;
         Sampler sampler;
-        u32_t width;
-        u32_t height;
-        u32_t index;
+        u32 width;
+        u32 height;
+        u32 index;
     };
 
     struct GraphicsConfig
@@ -431,97 +456,90 @@ namespace ar
         Topology    topology    = Topology::eTriangleList;
         PolygonMode polygonMode = PolygonMode::eFill;
         CullMode    cullMode    = CullMode::eNone;
-        b8_t        useMsaa     = false;
+        b8          useMsaa     = false;
     };
 
-    [[nodiscard]] auto execute(AppInfo&& info)     noexcept -> i32_t;
+    void execute(AppInfo&& info)                  noexcept;
+    void setCursorPosition(s32 x, s32 y)          noexcept;
+    void setTitle(char const* title)              noexcept;
+    void messageBoxError(char const* error)       noexcept;
+    void showCursor()                             noexcept;
+    void hideCursor()                             noexcept;
+    void pollEvents()                             noexcept;
+    void waitEvents()                             noexcept;
 
-    [[nodiscard]] auto getTimef()                  noexcept -> f32_t;
-    [[nodiscard]] auto getTime()                   noexcept -> f64_t;
-    [[nodiscard]] auto getDeltaTimef()             noexcept -> f32_t;
-    [[nodiscard]] auto getDeltaTime()              noexcept -> f64_t;
+    [[nodiscard]] f32 getTimef()                  noexcept;
+    [[nodiscard]] f64 getTime()                   noexcept;
+    [[nodiscard]] f32 getDeltaTimef()             noexcept;
+    [[nodiscard]] f64 getDeltaTime()              noexcept;
 
-    [[nodiscard]] auto isKeyPressed(Key)           noexcept -> b8_t;
-    [[nodiscard]] auto isKeyReleased(Key)          noexcept -> b8_t;
-    [[nodiscard]] auto isKeyDown(Key)              noexcept -> b8_t;
-    [[nodiscard]] auto isKeyUp(Key)                noexcept -> b8_t;
+    [[nodiscard]] b8  isKeyPressed(Key)           noexcept;
+    [[nodiscard]] b8  isKeyReleased(Key)          noexcept;
+    [[nodiscard]] b8  isKeyDown(Key)              noexcept;
+    [[nodiscard]] b8  isKeyUp(Key)                noexcept;
 
-    [[nodiscard]] auto isButtonPressed(Button)     noexcept -> b8_t;
-    [[nodiscard]] auto isButtonReleased(Button)    noexcept -> b8_t;
-    [[nodiscard]] auto isButtonDown(Button)        noexcept -> b8_t;
-    [[nodiscard]] auto isButtonUp(Button)          noexcept -> b8_t;
+    [[nodiscard]] b8  isButtonPressed(Button)     noexcept;
+    [[nodiscard]] b8  isButtonReleased(Button)    noexcept;
+    [[nodiscard]] b8  isButtonDown(Button)        noexcept;
+    [[nodiscard]] b8  isButtonUp(Button)          noexcept;
 
-    [[nodiscard]] auto getGlobalCursorPositionX()  noexcept -> i32_t;
-    [[nodiscard]] auto getGlobalCursorPositionY()  noexcept -> i32_t;
-    [[nodiscard]] auto getCursorPositionX()        noexcept -> i32_t;
-    [[nodiscard]] auto getCursorPositionY()        noexcept -> i32_t;
-    [[nodiscard]] auto getCursorDeltaX()           noexcept -> i32_t;
-    [[nodiscard]] auto getCursorDeltaY()           noexcept -> i32_t;
+    [[nodiscard]] s32 getGlobalCursorPositionX()  noexcept;
+    [[nodiscard]] s32 getGlobalCursorPositionY()  noexcept;
+    [[nodiscard]] s32 getCursorPositionX()        noexcept;
+    [[nodiscard]] s32 getCursorPositionY()        noexcept;
+    [[nodiscard]] s32 getCursorDeltaX()           noexcept;
+    [[nodiscard]] s32 getCursorDeltaY()           noexcept;
 
-    [[nodiscard]] auto getWidth()                  noexcept -> i32_t;
-    [[nodiscard]] auto getHeight()                 noexcept -> i32_t;
-    [[nodiscard]] auto getFramebufferWidth()       noexcept -> u32_t;
-    [[nodiscard]] auto getFramebufferHeight()      noexcept -> u32_t;
-    [[nodiscard]] auto getAspectRatio()            noexcept -> f32_t;
-    [[nodiscard]] auto getFramebufferAspectRatio() noexcept -> f32_t;
-
-    auto setCursorPosition(i32_t x, i32_t y)       noexcept -> void;
-    auto setTitle(std::string_view title)          noexcept -> void;
-    auto messageBoxError(std::string_view error)   noexcept -> void;
-    auto showCursor()                              noexcept -> void;
-    auto hideCursor()                              noexcept -> void;
-    auto pollEvents()                              noexcept -> void;
-    auto waitEvents()                              noexcept -> void;
+    [[nodiscard]] s32 getWidth()                  noexcept;
+    [[nodiscard]] s32 getHeight()                 noexcept;
+    [[nodiscard]] u32 getFramebufferWidth()       noexcept;
+    [[nodiscard]] u32 getFramebufferHeight()      noexcept;
+    [[nodiscard]] f32 getAspectRatio()            noexcept;
+    [[nodiscard]] f32 getFramebufferAspectRatio() noexcept;
 
     struct Shader : public ShaderHandle
     {
-        auto create(std::string_view path, Constants const& constants = {}) noexcept -> void;
-        auto create(u32_t const* pSpirv, size_t size, ShaderStage stage, Constants const& constants = {}) noexcept -> void;
-        auto destroy() noexcept -> void;
+        void create(const char* path, Constants const& constants = {}) noexcept;
+        void create(u32 const* pSpirv, size_t size, ShaderStage stage, Constants const& constants = {}) noexcept;
+        void destroy() noexcept;
     };
 
     struct Pipeline : public PipelineHandle
     {
-        auto create(GraphicsConfig&& config) noexcept -> void;
-        auto destroy() noexcept -> void;
+        void create(GraphicsConfig&& config) noexcept;
+        void destroy() noexcept;
     };
 
     struct Buffer : public BufferHandle
     {
-        auto create(size_t bufferCapacity) noexcept -> void;
-        auto create(void const* pData, size_t dataSize) noexcept -> void;
-        auto destroy() noexcept -> void;
-        auto write(void const* pData, size_t size = {}, size_t offset = {}) noexcept -> void;
+        void create(size_t bufferCapacity) noexcept;
+        void create(void const* pData, size_t dataSize) noexcept;
+        void destroy() noexcept;
+        void write(void const* pData, size_t size = {}, size_t offset = {}) noexcept;
     };
 
     struct Image : public ImageHandle
     {
-        auto create(ImageCreateInfo const& imageCreateInfo) noexcept -> void;
-        auto destroy() noexcept -> void;
+        void create(ImageCreateInfo const& imageCreateInfo) noexcept;
+        void destroy() noexcept;
     };
 
     struct GraphicsCommands
     {
-    private:
-        using ColorAttachments = std::initializer_list<ColorAttachment>;
-        static constexpr u32_t s_id = sizeof(DrawIndirectCommand);
-        static constexpr u32_t s_idi = sizeof(DrawIndexedIndirectCommand);
-
-    public:
-        auto barrier(ImageBarrier barrier) noexcept -> void;
-        auto beginRendering(ColorAttachments, DepthAttachment = {}) noexcept -> void;
-        auto endRendering() noexcept -> void;
-        auto beginPresent() noexcept -> void;
-        auto endPresent() noexcept -> void;
-        auto bindPipeline(Pipeline const& pipeline) noexcept -> void;
-        auto bindIndexBuffer16(Buffer const& buffer) noexcept -> void;
-        auto bindIndexBuffer32(Buffer const& buffer) noexcept -> void;
-        auto draw(u32_t vertexCount, u32_t instanceCount = 1u, u32_t vertex = 0u, u32_t instance = 0u) noexcept -> void;
-        auto drawIndexed(u32_t indexCount, u32_t instanceCount = 1u, u32_t index = 0u, i32_t vertexOffset = 0, u32_t instance = 0u) noexcept -> void;
-        auto drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = s_id) noexcept -> void;
-        auto drawIndexedIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride = s_idi) noexcept -> void;
-        auto drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = s_id) noexcept -> void;
-        auto drawIndexedIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride = s_idi) noexcept -> void;
-        auto pushConstant(void const* pData, u32_t size) noexcept -> void;
+        void barrier(ImageBarrier barrier) noexcept;
+        void beginRendering(std::initializer_list<ColorAttachment>, DepthAttachment = {}) noexcept;
+        void endRendering() noexcept;
+        void beginPresent() noexcept;
+        void endPresent() noexcept;
+        void bindPipeline(Pipeline const& pipeline) noexcept;
+        void bindIndexBuffer16(Buffer const& buffer) noexcept;
+        void bindIndexBuffer32(Buffer const& buffer) noexcept;
+        void draw(u32 vertexCount, u32 instanceCount = 1u, u32 vertex = 0u, u32 instance = 0u) noexcept;
+        void drawIndexed(u32 indexCount, u32 instanceCount = 1u, u32 index = 0u, s32 vertexOffset = 0, u32 instance = 0u) noexcept;
+        void drawIndirect(Buffer const& buffer, u32 drawCount, u32 stride = sizeof(DrawIndirectCommand)) noexcept;
+        void drawIndexedIndirect(Buffer const& buffer, u32 drawCount, u32 stride = sizeof(DrawIndexedIndirectCommand)) noexcept;
+        void drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32 maxDraws, u32 stride = sizeof(DrawIndirectCommand)) noexcept;
+        void drawIndexedIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32 maxDraws, u32 stride = sizeof(DrawIndexedIndirectCommand)) noexcept;
+        void pushConstant(void const* pData, u32 size) noexcept;
     };
 }

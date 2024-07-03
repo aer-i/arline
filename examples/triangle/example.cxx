@@ -1,24 +1,22 @@
-#include "shader.inl"
 #include <Arline.hxx>
-#include <cstdio>
 
 static ar::Pipeline pipeline;
 static ar::Buffer vertexBuffer;
 
-static auto recordCommands(ar::GraphicsCommands cmd) -> void
+void recordCommands(ar::GraphicsCommands cmd)
 {
     cmd.beginPresent();
     {
         cmd.pushConstant(&vertexBuffer.address, sizeof(vertexBuffer.address));
         cmd.bindPipeline(pipeline);
-        cmd.draw(3u);
+        cmd.draw(3);
     }
     cmd.endPresent();
 }
 
-static auto init() -> void
+void init()
 {
-    constexpr float vertices[] = {
+    ar::f32 vertices[] = {
         0.5f, 0.5f, 0.f,
         -.5f, 0.5f, 0.f,
         0.0f, -.5f, 0.f
@@ -27,8 +25,8 @@ static auto init() -> void
     vertexBuffer.create(vertices, sizeof(vertices));
 
     ar::Shader vert, frag;
-    vert.create(shaders::vert, sizeof(shaders::vert), ar::ShaderStage::eVertex);
-    frag.create(shaders::frag, sizeof(shaders::frag), ar::ShaderStage::eFragment);
+    frag.create("shaders/main.frag.spv");
+    vert.create("shaders/main.vert.spv");
 
     pipeline.create(ar::GraphicsConfig{
         .shaders = { vert, frag },
@@ -43,19 +41,18 @@ static auto init() -> void
     frag.destroy();
 }
 
-static auto teardown() -> void
+void teardown()
 {
     vertexBuffer.destroy();
     pipeline.destroy();
 }
 
-auto main() -> int
+int main()
 {
-    return ar::execute(ar::AppInfo{
+    ar::execute(ar::AppInfo{
         .onInit = init,
         .onDestroy = teardown,
         .onCommandsRecord = recordCommands,
-        .title = "Triangle",
         .width = 1280,
         .height = 720,
         .enalbeVsync = true

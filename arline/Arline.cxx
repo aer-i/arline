@@ -7,9 +7,7 @@
 #   include <dwmapi.h>
 #   pragma comment(lib, "dwmapi")
 #else
-#   define VK_USE_PLATFORM_XLIB_KHR
-#   include <unistd.h>
-#   include <sys/time.h>
+#   error Unsupported platform
 #endif
 
 #include "Arline.hxx"
@@ -26,13 +24,13 @@ static constexpr auto g_maxImageCount{ g_minImageCount<T> * static_cast<T>(2) };
 
 struct ArlineContext
 {
-    #ifdef AR_ENABLE_INFO_CALLBACK
+#ifdef AR_ENABLE_INFO_CALLBACK
     union DebugMessenger
     {
         VkDebugUtilsMessengerEXT handle;
-        u8_t enableValidationLayers;
+        b8 enableValidationLayers;
     };
-    #endif
+#endif
 
     struct SwapchainImage
     {
@@ -42,16 +40,16 @@ struct ArlineContext
         VkCommandBuffer presentCommandBuffer;
     };
 
-    #ifdef AR_ENABLE_INFO_CALLBACK
+#ifdef AR_ENABLE_INFO_CALLBACK
     DebugMessenger messenger;
-    #endif
+#endif
 
-    b8_t vsyncEnabled;
+    b8 vsyncEnabled;
     VkInstance instance;
     VkSurfaceKHR surface;
     VkPhysicalDevice physicalDevice;
-    u32_t graphicsFamily;
-    u32_t presentFamily;
+    u32 graphicsFamily;
+    u32 presentFamily;
     VkCommandPool graphicsCommandPool;
     VkCommandPool presentCommandPool;
     VkSurfaceFormatKHR surfaceFormat;
@@ -68,10 +66,10 @@ struct ArlineContext
     VkCommandBuffer transferCommandBuffer;
     VmaAllocator allocator;
 
-    u32_t imageCount;
-    u32_t unifiedPresent;
-    u32_t imageIndex;
-    u32_t cmdIndex;
+    u32 imageCount;
+    u32 unifiedPresent;
+    u32 imageIndex;
+    u32 cmdIndex;
     VkFence fence;
     VkSemaphore acquireSemaphore;
     VkSemaphore graphicsSemaphore;
@@ -83,73 +81,63 @@ struct ArlineContext
     VkSubmitInfo submitInfo;
     VkPresentInfoKHR presentInfo;
 
-    SwapchainImage images[g_maxImageCount<u32_t>];
+    SwapchainImage images[g_maxImageCount<u32>];
 };
 
 struct ArlineWindow
 {
-#ifdef _WIN32
     HWND hwnd;
     HINSTANCE hinstance;
-#else
-    Display* dpy;
-    Window xwnd;
-#endif
-    i32_t width;
-    i32_t height;
-    b8_t available;
+    s32 width;
+    s32 height;
+    b8 available;
 };
 
 struct ArlineTimer
 {
-#ifdef _WIN32
     LARGE_INTEGER timeOffset;
     LARGE_INTEGER frequency;
-#else
-    u64_t timeOffset;
-    clockid_t clock;
-    static constexpr u64_t s_frequency = 1'000'000'000;
-#endif
-    f64_t previousTime;
-    f64_t deltaTime;
+    f64 previousTime;
+    f64 deltaTime;
 };
 
 struct ArlineKey
 {
-    b8_t isPressed  : 1;
-    b8_t isReleased : 1;
+    b8 isPressed  : 1;
+    b8 isReleased : 1;
 };
 
 struct ArlineKeyboard
 {
-    ArlineKey keys[static_cast<u8_t>(ar::Key::eMaxEnum)];
-    b8_t keysDown[static_cast<u8_t>(ar::Key::eMaxEnum)];
+    ArlineKey keys[static_cast<u8>(ar::Key::eMenu) + 1];
+    b8 keysDown[static_cast<u8>(ar::Key::eMenu) + 1];
 };
 
 struct ArlineButton
 {
-    b8_t isDown     : 1;
-    b8_t isPressed  : 1;
-    b8_t isReleased : 1;
+    b8 isDown     : 1;
+    b8 isPressed  : 1;
+    b8 isReleased : 1;
 };
 
 struct ArlineMouse
 {
-    i32_t deltaX, deltaY;
-    i32_t globPosX, globPosY;
-    i32_t posX, posY;
+    s32 deltaX, deltaY;
+    s32 globPosX, globPosY;
+    s32 posX, posY;
     ArlineButton buttons[5];
 };
 
 #ifdef AR_ENABLE_INFO_CALLBACK
-static callback_t     g_infoCallback  = {};
+static void (*g_infoCallback)(char const*){};
 #endif
-static callback_t     g_errorCallback = {};
-static ArlineContext  g_ctx           = {};
-static ArlineWindow   g_wnd           = {};
-static ArlineTimer    g_timer         = {};
-static ArlineKeyboard g_keyboard      = {};
-static ArlineMouse    g_mouse         = {};
+static void (*g_errorCallback)(char const*){};
+static ArlineContext g_ctx{};
+static ArlineWindow g_wnd{};
+static ArlineTimer g_timer{};
+static ArlineMouse g_mouse{};
+static ArlineKeyboard g_keyboard{};
+static u8 g_vkToKey[255]{};
 
 #ifdef AR_ENABLE_INFO_CALLBACK
 #define AR_INFO_CALLBACK(f, ...) \
@@ -160,42 +148,36 @@ static ArlineMouse    g_mouse         = {};
 
 namespace arTimer
 {
-    static auto create() noexcept -> void;
-    static auto update() noexcept -> void;
+    static void create() noexcept;
+    static void update() noexcept;
 }
 
 namespace arWindow
 {
-    static auto create(ar::AppInfo const&) noexcept -> void;
-    static auto teardown() noexcept -> void;
+    static void create(ar::AppInfo const&) noexcept;
+    static void teardown() noexcept;
 }
 
 namespace arContext
 {
-    static auto create() noexcept -> void;
-    static auto teardown() noexcept -> void;
-    static auto acquireImage() noexcept -> b8_t;
-    static auto presentFrame() noexcept -> b8_t;
-    static auto createSwapchain(b8_t vsync) noexcept -> void;
-    static auto teardownSwapchain() noexcept -> void;
-    static auto resultCheck(VkResult result) noexcept -> void;
-    static auto beginTransfer() noexcept -> void;
-    static auto endTransfer() noexcept -> void;
-    static auto layoutToStage(ar::ImageLayout) noexcept -> VkPipelineStageFlags2;
-    static auto layoutToAccess(ar::ImageLayout) noexcept -> VkAccessFlags2;
-    static auto createImageView(
-        VkImage image,
-        VkImageViewType type,
-        VkFormat format,
-        VkImageAspectFlags aspect,
-        u32_t mipLevels
-    ) noexcept -> VkImageView;
+    static void create() noexcept;
+    static void teardown() noexcept;
+    static b8 acquireImage() noexcept;
+    static b8 presentFrame() noexcept;
+    static void createSwapchain(b8) noexcept;
+    static void teardownSwapchain() noexcept;
+    static void resultCheck(VkResult) noexcept;
+    static void beginTransfer() noexcept;
+    static void endTransfer() noexcept;
+    static VkPipelineStageFlags2 layoutToStage(ar::ImageLayout) noexcept;
+    static VkAccessFlags2 layoutToAccess(ar::ImageLayout) noexcept;
+    static VkImageView createImageView(VkImage, VkImageViewType, VkFormat, VkImageAspectFlags, u32) noexcept;
 }
 
 #pragma endregion
 #pragma region Execution
 
-auto ar::execute(AppInfo&& info) noexcept -> i32_t
+void ar::execute(AppInfo&& info) noexcept
 {
     if (!info.onResize)
         info.onResize = []{};
@@ -207,10 +189,10 @@ auto ar::execute(AppInfo&& info) noexcept -> i32_t
         info.onUpdate = []{ ar::pollEvents(); };
 
     if (!info.infoCallback)
-        info.infoCallback = [](std::string_view){};
+        info.infoCallback = [](char const*){};
 
     if (!info.errorCallback)
-        info.errorCallback = [](std::string_view){};
+        info.errorCallback = [](char const*){};
 
     g_ctx = ArlineContext{
         #ifdef AR_ENABLE_INFO_CALLBACK
@@ -246,7 +228,7 @@ auto ar::execute(AppInfo&& info) noexcept -> i32_t
 
         arContext::resultCheck(vkResetCommandPool(g_ctx.device, g_ctx.graphicsCommandPool, {}));
 
-        for (g_ctx.cmdIndex = u32_t{}; g_ctx.cmdIndex < g_ctx.imageCount; ++g_ctx.cmdIndex)
+        for (g_ctx.cmdIndex = u32{}; g_ctx.cmdIndex < g_ctx.imageCount; ++g_ctx.cmdIndex)
         {
             arContext::resultCheck(
                 vkBeginCommandBuffer(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, &commandBufferBI)
@@ -311,17 +293,207 @@ auto ar::execute(AppInfo&& info) noexcept -> i32_t
     info.onDestroy();
     arContext::teardown();
     arWindow::teardown();
-
-    return {};
 }
 
 #pragma endregion
 #pragma region Window
-#ifdef _WIN32
 
-static auto arWindow::create(ar::AppInfo const& config) noexcept -> void
+
+static LRESULT windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) noexcept
 {
-    auto error{ "Window creation failed" };
+    switch (msg)
+    {
+    [[unlikely]] case WM_SIZE:
+    {
+        g_wnd.width  = static_cast<u32>(static_cast<u64>(lp) & 0xffff);
+        g_wnd.height = static_cast<u32>(static_cast<u64>(lp) >> 16);
+
+        while (!g_wnd.width || !g_wnd.height)
+        {
+            ar::waitEvents();
+
+            if (!g_wnd.available)
+                break;
+        }
+
+        break;
+    }
+    [[unlikely]] case WM_GETMINMAXINFO:
+    {
+        reinterpret_cast<PMINMAXINFO>(lp)->ptMinTrackSize.x = 300;
+        reinterpret_cast<PMINMAXINFO>(lp)->ptMinTrackSize.y = 150;
+        return LRESULT{};
+    }
+    case WM_LBUTTONDOWN:
+    {
+        g_mouse.buttons[static_cast<u8>(ar::Button::eLeft)].isDown = true;
+        g_mouse.buttons[static_cast<u8>(ar::Button::eLeft)].isPressed = true;
+        break;
+    }
+    case WM_LBUTTONUP:
+    {
+        g_mouse.buttons[static_cast<u8>(ar::Button::eLeft)].isDown = false;
+        g_mouse.buttons[static_cast<u8>(ar::Button::eLeft)].isReleased = true;
+        break;
+    }
+    case WM_RBUTTONDOWN:
+    {
+        g_mouse.buttons[static_cast<u8>(ar::Button::eRight)].isDown = true;
+        g_mouse.buttons[static_cast<u8>(ar::Button::eRight)].isPressed = true;
+        break;
+    }
+    case WM_RBUTTONUP:
+    {
+        g_mouse.buttons[static_cast<u8>(ar::Button::eRight)].isDown = false;
+        g_mouse.buttons[static_cast<u8>(ar::Button::eRight)].isReleased = true;
+        break;
+    }
+    [[unlikely]] case WM_MBUTTONDOWN:
+    {
+        g_mouse.buttons[static_cast<u8>(ar::Button::eMiddle)].isDown = true;
+        g_mouse.buttons[static_cast<u8>(ar::Button::eMiddle)].isPressed = true;
+        break;
+    }
+    [[unlikely]] case WM_MBUTTONUP:
+    {
+        g_mouse.buttons[static_cast<u8>(ar::Button::eMiddle)].isDown = false;
+        g_mouse.buttons[static_cast<u8>(ar::Button::eMiddle)].isReleased = true;
+        break;
+    }
+    [[unlikely]] case WM_XBUTTONDOWN:
+    {
+        g_mouse.buttons[static_cast<u8>(ar::Button::eMiddle) + HIWORD(wp)].isDown = true;
+        g_mouse.buttons[static_cast<u8>(ar::Button::eMiddle) + HIWORD(wp)].isPressed = true;
+        break;   
+    }
+    [[unlikely]] case WM_XBUTTONUP:
+    {
+        g_mouse.buttons[static_cast<u8>(ar::Button::eMiddle) + HIWORD(wp)].isDown = false;
+        g_mouse.buttons[static_cast<u8>(ar::Button::eMiddle) + HIWORD(wp)].isReleased = true;
+        break;
+    }
+    case WM_SYSKEYDOWN: [[fallthrough]];
+    case WM_KEYDOWN:
+    {
+        u8 key = g_vkToKey[wp];
+
+        g_keyboard.keys[key].isPressed = !(lp & (1 << 30)); 
+        g_keyboard.keysDown[key] = true;
+
+        // Because Windows
+        if (wp == VK_MENU)
+            return 1;
+
+        break;
+    }
+    case WM_SYSKEYUP: [[fallthrough]];
+    case WM_KEYUP:
+    {
+        u8 key = g_vkToKey[wp];
+
+        g_keyboard.keys[key].isReleased = true;
+        g_keyboard.keysDown[key] = false;
+
+        // Because Windows
+        if (wp == VK_MENU)
+            return 1;
+
+        break;
+    }
+    [[unlikely]] case WM_DESTROY:
+    {
+        ::PostQuitMessage(0);
+        return LRESULT{ 0 };
+    }}
+
+    return ::DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+static void arWindow::create(ar::AppInfo const& config) noexcept
+{
+    auto const error{ "Window creation failed" };
+
+    g_vkToKey[+'A']             = static_cast<u8>(ar::Key::eA);
+    g_vkToKey[+'B']             = static_cast<u8>(ar::Key::eB);
+    g_vkToKey[+'C']             = static_cast<u8>(ar::Key::eC);
+    g_vkToKey[+'D']             = static_cast<u8>(ar::Key::eD);
+    g_vkToKey[+'E']             = static_cast<u8>(ar::Key::eE);
+    g_vkToKey[+'F']             = static_cast<u8>(ar::Key::eF);
+    g_vkToKey[+'G']             = static_cast<u8>(ar::Key::eG);
+    g_vkToKey[+'H']             = static_cast<u8>(ar::Key::eH);
+    g_vkToKey[+'I']             = static_cast<u8>(ar::Key::eI);
+    g_vkToKey[+'J']             = static_cast<u8>(ar::Key::eJ);
+    g_vkToKey[+'K']             = static_cast<u8>(ar::Key::eK);
+    g_vkToKey[+'L']             = static_cast<u8>(ar::Key::eL);
+    g_vkToKey[+'M']             = static_cast<u8>(ar::Key::eM);
+    g_vkToKey[+'N']             = static_cast<u8>(ar::Key::eN);
+    g_vkToKey[+'O']             = static_cast<u8>(ar::Key::eO);
+    g_vkToKey[+'P']             = static_cast<u8>(ar::Key::eP);
+    g_vkToKey[+'Q']             = static_cast<u8>(ar::Key::eQ);
+    g_vkToKey[+'R']             = static_cast<u8>(ar::Key::eR);
+    g_vkToKey[+'S']             = static_cast<u8>(ar::Key::eS);
+    g_vkToKey[+'T']             = static_cast<u8>(ar::Key::eT);
+    g_vkToKey[+'U']             = static_cast<u8>(ar::Key::eU);
+    g_vkToKey[+'V']             = static_cast<u8>(ar::Key::eV);
+    g_vkToKey[+'W']             = static_cast<u8>(ar::Key::eW);
+    g_vkToKey[+'X']             = static_cast<u8>(ar::Key::eX);
+    g_vkToKey[+'Y']             = static_cast<u8>(ar::Key::eY);
+    g_vkToKey[+'Z']             = static_cast<u8>(ar::Key::eZ);
+    g_vkToKey[+'0']             = static_cast<u8>(ar::Key::e0);
+    g_vkToKey[+'1']             = static_cast<u8>(ar::Key::e1);
+    g_vkToKey[+'2']             = static_cast<u8>(ar::Key::e2);
+    g_vkToKey[+'3']             = static_cast<u8>(ar::Key::e3);
+    g_vkToKey[+'4']             = static_cast<u8>(ar::Key::e4);
+    g_vkToKey[+'5']             = static_cast<u8>(ar::Key::e5);
+    g_vkToKey[+'6']             = static_cast<u8>(ar::Key::e6);
+    g_vkToKey[+'7']             = static_cast<u8>(ar::Key::e7);
+    g_vkToKey[+'8']             = static_cast<u8>(ar::Key::e8);
+    g_vkToKey[+'9']             = static_cast<u8>(ar::Key::e9);
+    g_vkToKey[VK_F1]            = static_cast<u8>(ar::Key::eF1);
+    g_vkToKey[VK_F2]            = static_cast<u8>(ar::Key::eF2);
+    g_vkToKey[VK_F3]            = static_cast<u8>(ar::Key::eF3);
+    g_vkToKey[VK_F4]            = static_cast<u8>(ar::Key::eF4);
+    g_vkToKey[VK_F5]            = static_cast<u8>(ar::Key::eF5);
+    g_vkToKey[VK_F6]            = static_cast<u8>(ar::Key::eF6);
+    g_vkToKey[VK_F7]            = static_cast<u8>(ar::Key::eF7);
+    g_vkToKey[VK_F8]            = static_cast<u8>(ar::Key::eF8);
+    g_vkToKey[VK_F9]            = static_cast<u8>(ar::Key::eF9);
+    g_vkToKey[VK_F10]           = static_cast<u8>(ar::Key::eF10);
+    g_vkToKey[VK_F11]           = static_cast<u8>(ar::Key::eF11);
+    g_vkToKey[VK_F12]           = static_cast<u8>(ar::Key::eF12);
+    g_vkToKey[VK_SPACE]         = static_cast<u8>(ar::Key::eSpace);      
+    g_vkToKey[VK_OEM_7]         = static_cast<u8>(ar::Key::eApostrophe); 
+    g_vkToKey[VK_OEM_COMMA]     = static_cast<u8>(ar::Key::eComma);      
+    g_vkToKey[VK_OEM_MINUS]     = static_cast<u8>(ar::Key::eMinus);      
+    g_vkToKey[VK_OEM_PERIOD]    = static_cast<u8>(ar::Key::ePeriod);     
+    g_vkToKey[VK_OEM_2]         = static_cast<u8>(ar::Key::eSlash);      
+    g_vkToKey[VK_OEM_1]         = static_cast<u8>(ar::Key::eSemicolon);  
+    g_vkToKey[VK_OEM_PLUS]      = static_cast<u8>(ar::Key::ePlus);       
+    g_vkToKey[VK_OEM_4]         = static_cast<u8>(ar::Key::eLBracket);   
+    g_vkToKey[VK_OEM_6]         = static_cast<u8>(ar::Key::eRBracket);   
+    g_vkToKey[VK_OEM_5]         = static_cast<u8>(ar::Key::eBackslash);  
+    g_vkToKey[VK_OEM_3]         = static_cast<u8>(ar::Key::eGraveAccent);
+    g_vkToKey[VK_ESCAPE]        = static_cast<u8>(ar::Key::eEscape);     
+    g_vkToKey[VK_TAB]           = static_cast<u8>(ar::Key::eTab);        
+    g_vkToKey[VK_BACK]          = static_cast<u8>(ar::Key::eBackspace);  
+    g_vkToKey[VK_INSERT]        = static_cast<u8>(ar::Key::eInsert);     
+    g_vkToKey[VK_DELETE]        = static_cast<u8>(ar::Key::eDelete);     
+    g_vkToKey[VK_RIGHT]         = static_cast<u8>(ar::Key::eRight);      
+    g_vkToKey[VK_LEFT]          = static_cast<u8>(ar::Key::eLeft);       
+    g_vkToKey[VK_DOWN]          = static_cast<u8>(ar::Key::eDown);       
+    g_vkToKey[VK_UP]            = static_cast<u8>(ar::Key::eUp);         
+    g_vkToKey[VK_NEXT]          = static_cast<u8>(ar::Key::ePageDown);   
+    g_vkToKey[VK_PRIOR]         = static_cast<u8>(ar::Key::ePageUp);     
+    g_vkToKey[VK_HOME]          = static_cast<u8>(ar::Key::eHome);       
+    g_vkToKey[VK_END]           = static_cast<u8>(ar::Key::eEnd);        
+    g_vkToKey[VK_CAPITAL]       = static_cast<u8>(ar::Key::eCapsLock);   
+    g_vkToKey[VK_SCROLL]        = static_cast<u8>(ar::Key::eScrollLock); 
+    g_vkToKey[VK_SNAPSHOT]      = static_cast<u8>(ar::Key::ePrintScreen);
+    g_vkToKey[VK_PAUSE]         = static_cast<u8>(ar::Key::ePause);      
+    g_vkToKey[VK_APPS]          = static_cast<u8>(ar::Key::eMenu);       
+    g_vkToKey[VK_SHIFT]         = static_cast<u8>(ar::Key::eShift);       
+    g_vkToKey[VK_CONTROL]       = static_cast<u8>(ar::Key::eCtrl);       
+    g_vkToKey[VK_MENU]          = static_cast<u8>(ar::Key::eAlt);       
 
     g_wnd = ArlineWindow{
         .hinstance = ::GetModuleHandleA(nullptr),
@@ -333,141 +505,7 @@ static auto arWindow::create(ar::AppInfo const& config) noexcept -> void
     auto const wc{ WNDCLASSEXW{
         .cbSize = sizeof(WNDCLASSEXW),
         .style = CS_OWNDC,
-        .lpfnWndProc = { 
-            [](HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
-            {
-                switch (msg)
-                {
-                [[unlikely]] case WM_SIZE:
-                    g_wnd.width = LOWORD(lp);
-                    g_wnd.height = HIWORD(lp);
-
-                    while (!g_wnd.width || !g_wnd.height)
-                    {
-                        ar::waitEvents();
-
-                        if (!g_wnd.available)
-                        {
-                            break;
-                        }
-                    }
-                    break;
-                [[unlikely]] case WM_GETMINMAXINFO:
-                    reinterpret_cast<PMINMAXINFO>(lp)->ptMinTrackSize.x = 300;
-                    reinterpret_cast<PMINMAXINFO>(lp)->ptMinTrackSize.y = 150;
-                    return LRESULT{};
-                case WM_LBUTTONDOWN:
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eLeft)].isDown = true;
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eLeft)].isPressed = true;
-                    break;
-                case WM_LBUTTONUP:
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eLeft)].isDown = false;
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eLeft)].isReleased = true;
-                    break;
-                case WM_RBUTTONDOWN:
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isDown = true;
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isPressed = true;
-                    break;
-                case WM_RBUTTONUP:
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isDown = false;
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eRight)].isReleased = true;
-                    break;
-                [[unlikely]] case WM_MBUTTONDOWN:
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isDown = true;
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isPressed = true;
-                    break;
-                [[unlikely]] case WM_MBUTTONUP:
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isDown = false;
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle)].isReleased = true;
-                    break;
-                [[unlikely]] case WM_XBUTTONDOWN:
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isDown = true;
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isPressed = true;
-                    break;
-                [[unlikely]] case WM_XBUTTONUP:
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isDown = false;
-                    g_mouse.buttons[static_cast<u8_t>(ar::Button::eMiddle) + HIWORD(wp)].isReleased = true;
-                    break;
-                case WM_SYSKEYDOWN: [[fallthrough]];
-                case WM_SYSKEYUP:   [[fallthrough]];
-                case WM_KEYDOWN:    [[fallthrough]];
-                case WM_KEYUP:
-                    if (wp >= +'A' && wp <= +'Z')
-                    {
-                        wp -= (+'A' - static_cast<WPARAM>(ar::Key::eA));
-                    }
-                    else if (wp >= +'0' && wp <= +'9')
-                    {
-                        wp -= (+'0' - static_cast<WPARAM>(ar::Key::e0));
-                    }
-                    else if (wp >= VK_LEFT && wp <= VK_DOWN)
-                    {
-                        wp -= (VK_LEFT - static_cast<WPARAM>(ar::Key::eLeft));
-                    }
-                    else switch (wp)
-                    {
-                    case VK_ESCAPE:
-                        wp = static_cast<WPARAM>(ar::Key::eEscape);
-                        break;
-                    case VK_SPACE:
-                        wp = static_cast<WPARAM>(ar::Key::eSpace);
-                        break;
-                    case VK_RETURN:
-                        wp = static_cast<WPARAM>(ar::Key::eEnter);
-                        break;
-                    case VK_BACK:
-                        wp = static_cast<WPARAM>(ar::Key::eBackspace);
-                        break;
-                    case VK_TAB:
-                        wp = static_cast<WPARAM>(ar::Key::eTab);
-                        break;
-                    case VK_OEM_MINUS:
-                        wp = static_cast<WPARAM>(ar::Key::eMinus);
-                        break;
-                    case VK_OEM_PLUS:
-                        wp = static_cast<WPARAM>(ar::Key::ePlus);
-                        break;
-                    case VK_SHIFT:
-                        if (::MapVirtualKeyW((lp & 0x00ff0000) >> 16, MAPVK_VSC_TO_VK_EX) == VK_LSHIFT)
-                            wp = static_cast<WPARAM>(ar::Key::eLeftShift);
-                        else
-                            wp = static_cast<WPARAM>(ar::Key::eRightShift);
-                        break;
-                    case VK_CONTROL:
-                        if (lp & 0x01000000)
-                            wp = static_cast<WPARAM>(ar::Key::eRightCtrl);
-                        else
-                            wp = static_cast<WPARAM>(ar::Key::eLeftCtrl);
-                        break;
-                    case VK_MENU:
-                        if (lp & 0x01000000)
-                            wp = static_cast<WPARAM>(ar::Key::eRightAlt);
-                        else
-                            wp = static_cast<WPARAM>(ar::Key::eLeftAlt);
-                        break;
-                    default:
-                        return ::DefWindowProcW(hwnd, msg, wp, lp);
-                    }
-
-                    if (msg == WM_SYSKEYDOWN || msg == WM_KEYDOWN) [[likely]]
-                    {
-                        g_keyboard.keys[wp].isPressed = !(lp & (1 << 30)); 
-                        g_keyboard.keysDown[wp] = true;
-                    }
-                    else [[unlikely]]
-                    {
-                        g_keyboard.keys[wp].isReleased = true;
-                        g_keyboard.keysDown[wp] = false;
-                    }
-                    break;
-                [[unlikely]] case WM_DESTROY:
-                    ::PostQuitMessage(0);
-                    return 0ll;
-                }
-
-                return ::DefWindowProcW(hwnd, msg, wp, lp);
-            }
-        },
+        .lpfnWndProc = windowProc,
         .hInstance = g_wnd.hinstance,
         .hCursor = ::LoadCursorA(nullptr, IDC_ARROW),
         .lpszClassName = L"ar",
@@ -478,13 +516,10 @@ static auto arWindow::create(ar::AppInfo const& config) noexcept -> void
         g_errorCallback(error);
     }
 
-    wchar_t windowTitleBuffer[1024];
-    ::MultiByteToWideChar(0, 0, config.title.data(), -1, windowTitleBuffer, 1024);
-
     g_wnd.hwnd = ::CreateWindowExW(
         WS_EX_DLGMODALFRAME,
         L"ar",
-        windowTitleBuffer,
+        L"",
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
         config.width, config.height,
@@ -509,10 +544,10 @@ static auto arWindow::create(ar::AppInfo const& config) noexcept -> void
     ::ShowWindow(g_wnd.hwnd, SW_SHOW);
     ::UpdateWindow(g_wnd.hwnd);
 
-    AR_INFO_CALLBACK("Created Win32 Window: width [%d], height [%d], title [%s]", config.width, config.height, config.title.data())
+    AR_INFO_CALLBACK("Created Win32 Window: width [%d], height [%d]", config.width, config.height)
 }
 
-static auto arWindow::teardown() noexcept -> void
+static void arWindow::teardown() noexcept
 {
     ::DestroyWindow(g_wnd.hwnd);
     ::UnregisterClassW(L"ar", g_wnd.hinstance);
@@ -520,7 +555,7 @@ static auto arWindow::teardown() noexcept -> void
     AR_INFO_CALLBACK("Destroyed Win32 Window")
 }
 
-auto ar::pollEvents() noexcept -> void
+void ar::pollEvents() noexcept
 {
     memset(g_keyboard.keys, 0, sizeof(g_keyboard.keys));
 
@@ -536,9 +571,7 @@ auto ar::pollEvents() noexcept -> void
         ::DispatchMessageW(&msg);
 
         if (msg.message == WM_QUIT) [[unlikely]]
-        {
             g_wnd.available = false;
-        }
     }
 
     POINT cursorPos;
@@ -556,290 +589,75 @@ auto ar::pollEvents() noexcept -> void
     g_mouse.posY = cursorPos.y;
 }
 
-auto ar::waitEvents() noexcept -> void
-{
-    ::WaitMessage();
-    ar::pollEvents();
-}
-
-auto ar::setTitle(std::string_view title) noexcept -> void
-{
-    ::SetWindowTextA(g_wnd.hwnd, title.data());
-}
-
-auto ar::messageBoxError(std::string_view error) noexcept -> void
-{
-    ::MessageBoxA(nullptr, error.data(), "Error", MB_ICONERROR);
-}
-
-#else
-
-static auto arWindow::create(ar::AppInfo const& config) noexcept -> void
-{
-    g_wnd = ArlineWindow{
-        .width = config.width,
-        .height = config.height,
-        .available = true
-    };
-
-    g_wnd.dpy = XOpenDisplay(nullptr);
-    g_wnd.xwnd = XCreateSimpleWindow(
-        g_wnd.dpy,
-        XDefaultRootWindow(g_wnd.dpy),
-        0, 0,
-        config.width, config.height,
-        0, 0,
-        0x00000000
-    );
-
-    XMapWindow(g_wnd.dpy, g_wnd.xwnd);
-    XFlush(g_wnd.dpy);
-
-    ar::setTitle(config.title);
-
-    AR_INFO_CALLBACK("Created X11 Window: width [%d], height [%d], title [%s]", config.width, config.height, config.title.data())
-}
-
-static auto arWindow::teardown() noexcept -> void
-{    
-    XDestroyWindow(g_wnd.dpy, g_wnd.xwnd);
-    XCloseDisplay(g_wnd.dpy);
-    AR_INFO_CALLBACK("%s", "Destroyed X11 Window")
-}
-
-auto ar::pollEvents() noexcept -> void
-{
-    XEvent event;
-
-    while (XPending(g_wnd.dpy))
-    {
-        XNextEvent(g_wnd.dpy, &event);
-        
-        switch (event.type)
-        {
-        case ClientMessage:
-            g_wnd.available = false;
-            break;
-        }
-    }
-}
-
-auto ar::waitEvents() noexcept -> void
-{
-    ar::pollEvents();
-}
-
-auto ar::setTitle(std::string_view title) noexcept -> void { }
-auto ar::messageBoxError(std::string_view error) noexcept -> void { }
-
-#endif
-
-auto ar::getWidth() noexcept -> i32_t
-{
-    return g_wnd.width;
-}
-
-auto ar::getHeight() noexcept -> i32_t
-{
-    return g_wnd.height;
-}
-
-auto ar::getFramebufferWidth() noexcept -> u32_t
-{
-    return g_ctx.surfaceExtent.width;
-}
-
-auto ar::getFramebufferHeight() noexcept -> u32_t
-{
-    return g_ctx.surfaceExtent.height;
-}
-
-auto ar::getAspectRatio() noexcept -> f32_t
-{
-    return static_cast<f32_t>(g_wnd.width) / g_wnd.height;
-}
-
-auto ar::getFramebufferAspectRatio() noexcept -> f32_t
-{
-    return static_cast<f32_t>(g_ctx.surfaceExtent.width) / g_ctx.surfaceExtent.height;
-}
+void ar::waitEvents()                       noexcept { ::WaitMessage(); ar::pollEvents();                                               }
+void ar::setTitle(char const* title)        noexcept { ::SetWindowTextA(g_wnd.hwnd, title);                                             }
+void ar::messageBoxError(char const* error) noexcept { ::MessageBoxA(nullptr, error, "Error", MB_ICONERROR);                            }
+s32 ar::getWidth()                          noexcept { return g_wnd.width;                                                              }
+s32 ar::getHeight()                         noexcept { return g_wnd.height;                                                             }
+u32 ar::getFramebufferWidth()               noexcept { return g_ctx.surfaceExtent.width;                                                }
+u32 ar::getFramebufferHeight()              noexcept { return g_ctx.surfaceExtent.height;                                               }
+f32 ar::getAspectRatio()                    noexcept { return static_cast<f32>(g_wnd.width) / g_wnd.height;                             }
+f32 ar::getFramebufferAspectRatio()         noexcept { return static_cast<f32>(g_ctx.surfaceExtent.width) / g_ctx.surfaceExtent.height; }
 
 #pragma endregion
 #pragma region Time
-#ifdef _WIN32
 
-static auto arTimer::create() noexcept -> void
+static void arTimer::create() noexcept
 {
     ::QueryPerformanceFrequency(&g_timer.frequency);
     ::QueryPerformanceCounter(&g_timer.timeOffset);
 }
 
-auto ar::getTime() noexcept -> f64_t
+f64 ar::getTime() noexcept
 {
     LARGE_INTEGER value;
     ::QueryPerformanceCounter(&value);
 
-    return static_cast<f64_t>(value.QuadPart - g_timer.timeOffset.QuadPart) / g_timer.frequency.QuadPart;
+    return static_cast<f64>(value.QuadPart - g_timer.timeOffset.QuadPart) / g_timer.frequency.QuadPart;
 }
 
-#else
-
-static auto arTimer::create() noexcept -> void
-{
-    g_timer.clock = CLOCK_REALTIME;
-
-#if defined(_POSIX_MONOTONIC_CLOCK)
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
-    {
-        g_timer.clock = CLOCK_MONOTONIC;
-    }
-#else
-    struct timespec ts;
-#endif
-
-    clock_gettime(g_timer.clock, &ts);
-    g_timer.timeOffset = static_cast<u64_t>(ts.tv_sec) * g_timer.s_frequency + static_cast<u64_t>(ts.tv_nsec);
-}
-
-auto ar::getTime() noexcept -> f64_t
-{
-    struct timespec ts;
-    clock_gettime(g_timer.clock, &ts);
-
-    u64_t current = static_cast<u64_t>(ts.tv_sec) * g_timer.s_frequency + static_cast<u64_t>(ts.tv_nsec);
-
-    return static_cast<f64_t>(current - g_timer.timeOffset) / g_timer.s_frequency;
-}
-
-#endif
-
-auto arTimer::update() noexcept -> void
+static void arTimer::update() noexcept
 {
     auto now{ ar::getTime() };
     g_timer.deltaTime = now - g_timer.previousTime;
     g_timer.previousTime = now;
 }
 
-auto ar::getTimef() noexcept -> f32_t
-{
-    return static_cast<f32_t>(ar::getTime());
-}
-
-auto ar::getDeltaTime() noexcept -> f64_t
-{
-    return g_timer.deltaTime;
-}
-
-auto ar::getDeltaTimef() noexcept -> f32_t
-{
-    return static_cast<f32_t>(g_timer.deltaTime);
-}
+f32 ar::getTimef()      noexcept { return static_cast<f32>(ar::getTime());     }
+f64 ar::getDeltaTime()  noexcept { return g_timer.deltaTime;                   }
+f32 ar::getDeltaTimef() noexcept { return static_cast<f32>(g_timer.deltaTime); }
 
 #pragma endregion
 #pragma region Input
 
-auto ar::isKeyPressed(Key key) noexcept -> b8_t
-{
-    return g_keyboard.keys[static_cast<u8_t>(key)].isPressed;
-}
-
-auto ar::isKeyReleased(Key key) noexcept -> b8_t
-{
-    return g_keyboard.keys[static_cast<u8_t>(key)].isReleased;
-}
-
-auto ar::isKeyDown(Key key) noexcept -> b8_t
-{
-    return g_keyboard.keysDown[static_cast<u8_t>(key)];
-}
-
-auto ar::isKeyUp(Key key) noexcept -> b8_t
-{
-    return !g_keyboard.keysDown[static_cast<u8_t>(key)];
-}
-
-auto ar::isButtonPressed(Button button) noexcept -> b8_t
-{
-    return g_mouse.buttons[static_cast<u8_t>(button)].isPressed;
-}
-
-auto ar::isButtonReleased(Button button) noexcept -> b8_t
-{
-    return g_mouse.buttons[static_cast<u8_t>(button)].isReleased;
-}
-
-auto ar::isButtonDown(Button button) noexcept -> b8_t
-{
-    return g_mouse.buttons[static_cast<u8_t>(button)].isDown;
-}
-
-auto ar::isButtonUp(Button button) noexcept -> b8_t
-{
-    return !g_mouse.buttons[static_cast<u8_t>(button)].isDown;
-}
-
-auto ar::getGlobalCursorPositionX() noexcept -> i32_t
-{
-    return g_mouse.globPosX;
-}
-
-auto ar::getGlobalCursorPositionY() noexcept -> i32_t
-{
-    return g_mouse.globPosY;
-}
-
-auto ar::getCursorPositionX() noexcept -> i32_t
-{
-    return g_mouse.posX;
-}
-
-auto ar::getCursorPositionY() noexcept -> i32_t
-{
-    return g_mouse.posY;
-}
-
-auto ar::getCursorDeltaX() noexcept -> i32_t
-{
-    return g_mouse.deltaX;
-}
-
-auto ar::getCursorDeltaY() noexcept -> i32_t
-{
-    return g_mouse.deltaY;
-}
-
-auto ar::setCursorPosition(i32_t x, i32_t y) noexcept -> void
-{
-#ifdef _WIN32
-    ::SetCursorPos(x, y);
-#endif
-}
-
-auto ar::showCursor() noexcept -> void
-{
-#ifdef _WIN32
-    while (::ShowCursor(1) < 0);
-#endif
-}
-
-auto ar::hideCursor() noexcept -> void
-{
-#ifdef _WIN32
-    while (::ShowCursor(0) >= 0);
-#endif
-}
+b8 ar::isKeyPressed(Key key)             noexcept { return g_keyboard.keys[static_cast<u8>(key)].isPressed;     }
+b8 ar::isKeyReleased(Key key)            noexcept { return g_keyboard.keys[static_cast<u8>(key)].isReleased;    }
+b8 ar::isKeyDown(Key key)                noexcept { return  g_keyboard.keysDown[static_cast<u8>(key)];          }
+b8 ar::isKeyUp(Key key)                  noexcept { return !g_keyboard.keysDown[static_cast<u8>(key)];          }
+b8 ar::isButtonPressed(Button button)    noexcept { return g_mouse.buttons[static_cast<u8>(button)].isPressed;  }
+b8 ar::isButtonReleased(Button button)   noexcept { return g_mouse.buttons[static_cast<u8>(button)].isReleased; }
+b8 ar::isButtonDown(Button button)       noexcept { return  g_mouse.buttons[static_cast<u8>(button)].isDown;    }
+b8 ar::isButtonUp(Button button)         noexcept { return !g_mouse.buttons[static_cast<u8>(button)].isDown;    }
+s32 ar::getGlobalCursorPositionX()       noexcept { return g_mouse.globPosX;                                    }
+s32 ar::getGlobalCursorPositionY()       noexcept { return g_mouse.globPosY;                                    }
+s32 ar::getCursorPositionX()             noexcept { return g_mouse.posX;                                        }
+s32 ar::getCursorPositionY()             noexcept { return g_mouse.posY;                                        }
+s32 ar::getCursorDeltaX()                noexcept { return g_mouse.deltaX;                                      }
+s32 ar::getCursorDeltaY()                noexcept { return g_mouse.deltaY;                                      }
+void ar::setCursorPosition(s32 x, s32 y) noexcept { ::SetCursorPos(x, y);                                       }
+void ar::showCursor()                    noexcept { while (::ShowCursor(1) <  0);                               }
+void ar::hideCursor()                    noexcept { while (::ShowCursor(0) >= 0);                               }
 
 #pragma endregion
 #pragma region Graphics Commands
 
-auto ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept -> void
+void ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept
 {
     VkImageAspectFlags constexpr aspects[] = { VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_DEPTH_BIT };
     auto usingDepth{ false };
 
-    usingDepth = static_cast<b8_t>(usingDepth + (barrier.oldLayout == ar::ImageLayout::eDepthAttachment));
-    usingDepth = static_cast<b8_t>(usingDepth + (barrier.newLayout == ar::ImageLayout::eDepthAttachment));  
+    usingDepth = static_cast<b8>(usingDepth + (barrier.oldLayout == ar::ImageLayout::eDepthAttachment));
+    usingDepth = static_cast<b8>(usingDepth + (barrier.newLayout == ar::ImageLayout::eDepthAttachment));  
 
     auto const imageBarrier{ VkImageMemoryBarrier2{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -869,7 +687,7 @@ auto ar::GraphicsCommands::barrier(ImageBarrier barrier) noexcept -> void
     vkCmdPipelineBarrier2(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, &dependency);
 }
 
-auto ar::GraphicsCommands::beginRendering(ColorAttachments colorAttachments, DepthAttachment depthAttachment) noexcept -> void
+void ar::GraphicsCommands::beginRendering(std::initializer_list<ColorAttachment> colorAttachments, DepthAttachment depthAttachment) noexcept
 {
     VkRenderingAttachmentInfo attachments[9];
 
@@ -945,7 +763,7 @@ auto ar::GraphicsCommands::beginRendering(ColorAttachments colorAttachments, Dep
             .extent = extent
         },
         .layerCount = 1u,
-        .colorAttachmentCount = static_cast<u32_t>(colorAttachments.size()),
+        .colorAttachmentCount = static_cast<u32>(colorAttachments.size()),
         .pColorAttachments = attachments,
         .pDepthAttachment = depthAttachment.pImage ? &attachments[8] : nullptr
     }};
@@ -958,8 +776,8 @@ auto ar::GraphicsCommands::beginRendering(ColorAttachments colorAttachments, Dep
     }};
 
     auto const viewport{ VkViewport{
-        .width = static_cast<f32_t>(renderingInfo.renderArea.extent.width),
-        .height = static_cast<f32_t>(renderingInfo.renderArea.extent.height),
+        .width = static_cast<f32>(renderingInfo.renderArea.extent.width),
+        .height = static_cast<f32>(renderingInfo.renderArea.extent.height),
         .maxDepth = 1.f
     }};
 
@@ -968,12 +786,12 @@ auto ar::GraphicsCommands::beginRendering(ColorAttachments colorAttachments, Dep
     vkCmdSetViewport(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, 0u, 1u, &viewport);
 }
 
-auto ar::GraphicsCommands::endRendering() noexcept -> void
+void ar::GraphicsCommands::endRendering() noexcept
 {
     vkCmdEndRendering(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer);
 }
 
-auto ar::GraphicsCommands::beginPresent() noexcept -> void
+void ar::GraphicsCommands::beginPresent() noexcept
 {
     auto const imageBarrier{ VkImageMemoryBarrier2{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -1025,8 +843,8 @@ auto ar::GraphicsCommands::beginPresent() noexcept -> void
     }};
 
     auto const viewport{ VkViewport{
-        .width = static_cast<f32_t>(g_ctx.surfaceExtent.width),
-        .height = static_cast<f32_t>(g_ctx.surfaceExtent.height),
+        .width = static_cast<f32>(g_ctx.surfaceExtent.width),
+        .height = static_cast<f32>(g_ctx.surfaceExtent.height),
         .maxDepth = 1.f
     }};
 
@@ -1036,7 +854,7 @@ auto ar::GraphicsCommands::beginPresent() noexcept -> void
     vkCmdSetViewport(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, 0u, 1u, &viewport);
 }
 
-auto ar::GraphicsCommands::endPresent() noexcept -> void
+void ar::GraphicsCommands::endPresent() noexcept
 {
     VkImageMemoryBarrier2 imageBarrier;
 
@@ -1091,7 +909,7 @@ auto ar::GraphicsCommands::endPresent() noexcept -> void
     vkCmdPipelineBarrier2(g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer, &dependency);
 }
 
-auto ar::GraphicsCommands::bindPipeline(Pipeline const& pipeline) noexcept -> void
+void ar::GraphicsCommands::bindPipeline(Pipeline const& pipeline) noexcept
 {
     vkCmdBindPipeline(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1100,7 +918,7 @@ auto ar::GraphicsCommands::bindPipeline(Pipeline const& pipeline) noexcept -> vo
     );
 }
 
-auto ar::GraphicsCommands::bindIndexBuffer16(Buffer const& buffer) noexcept -> void
+void ar::GraphicsCommands::bindIndexBuffer16(Buffer const& buffer) noexcept
 {
     vkCmdBindIndexBuffer(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1110,7 +928,7 @@ auto ar::GraphicsCommands::bindIndexBuffer16(Buffer const& buffer) noexcept -> v
     );
 }
 
-auto ar::GraphicsCommands::bindIndexBuffer32(Buffer const& buffer) noexcept -> void
+void ar::GraphicsCommands::bindIndexBuffer32(Buffer const& buffer) noexcept
 {
      vkCmdBindIndexBuffer(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1120,7 +938,7 @@ auto ar::GraphicsCommands::bindIndexBuffer32(Buffer const& buffer) noexcept -> v
     );
 }
 
-auto ar::GraphicsCommands::draw(u32_t vertexCount, u32_t instanceCount, u32_t vertex, u32_t instance) noexcept -> void
+void ar::GraphicsCommands::draw(u32 vertexCount, u32 instanceCount, u32 vertex, u32 instance) noexcept
 {
     vkCmdDraw(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1131,7 +949,7 @@ auto ar::GraphicsCommands::draw(u32_t vertexCount, u32_t instanceCount, u32_t ve
     );
 }
 
-auto ar::GraphicsCommands::drawIndexed(u32_t indexCount, u32_t instanceCount, u32_t index, i32_t vertexOffset, u32_t instance) noexcept -> void
+void ar::GraphicsCommands::drawIndexed(u32 indexCount, u32 instanceCount, u32 index, s32 vertexOffset, u32 instance) noexcept
 {
     vkCmdDrawIndexed(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1143,7 +961,7 @@ auto ar::GraphicsCommands::drawIndexed(u32_t indexCount, u32_t instanceCount, u3
     );
 }
 
-auto ar::GraphicsCommands::drawIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride) noexcept -> void
+void ar::GraphicsCommands::drawIndirect(Buffer const& buffer, u32 drawCount, u32 stride) noexcept
 {
     vkCmdDrawIndirect(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1154,7 +972,7 @@ auto ar::GraphicsCommands::drawIndirect(Buffer const& buffer, u32_t drawCount, u
     );
 }
 
-auto ar::GraphicsCommands::drawIndexedIndirect(Buffer const& buffer, u32_t drawCount, u32_t stride) noexcept -> void
+void ar::GraphicsCommands::drawIndexedIndirect(Buffer const& buffer, u32 drawCount, u32 stride) noexcept
 {
     vkCmdDrawIndexedIndirect(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1165,7 +983,7 @@ auto ar::GraphicsCommands::drawIndexedIndirect(Buffer const& buffer, u32_t drawC
     );
 }
 
-auto ar::GraphicsCommands::drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride) noexcept -> void
+void ar::GraphicsCommands::drawIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32 maxDraws, u32 stride) noexcept
 {
     vkCmdDrawIndirectCount(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1178,7 +996,7 @@ auto ar::GraphicsCommands::drawIndirectCount(Buffer const& buffer, Buffer const&
     );
 }
 
-auto ar::GraphicsCommands::drawIndexedIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32_t maxDraws, u32_t stride) noexcept -> void
+void ar::GraphicsCommands::drawIndexedIndirectCount(Buffer const& buffer, Buffer const& countBuffer, u32 maxDraws, u32 stride) noexcept
 {
     vkCmdDrawIndexedIndirectCount(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1191,7 +1009,7 @@ auto ar::GraphicsCommands::drawIndexedIndirectCount(Buffer const& buffer, Buffer
     );
 }
 
-auto ar::GraphicsCommands::pushConstant(void const* pData, u32_t size) noexcept -> void
+void ar::GraphicsCommands::pushConstant(void const* pData, u32 size) noexcept
 {
     vkCmdPushConstants(
         g_ctx.images[g_ctx.cmdIndex].graphicsCommandBuffer,
@@ -1206,23 +1024,24 @@ auto ar::GraphicsCommands::pushConstant(void const* pData, u32_t size) noexcept 
 #pragma endregion
 #pragma region Shaders
 
-auto ar::Shader::create(std::string_view path, Constants const& constants) noexcept -> void
+void ar::Shader::create(char const* path, Constants const& constants) noexcept
 {
     auto error{ [&]
     {
         char errorMessage[1024];
-        std::snprintf(errorMessage, sizeof(errorMessage), "Failed to load shader: [%s]", path.data());
+        std::snprintf(errorMessage, sizeof(errorMessage), "Failed to load shader: [%s]", path);
 
         g_errorCallback(errorMessage);
     }};
 
     VkShaderStageFlagBits stageFlagBits;
 
-    if (path.ends_with(".vert.spv"))
+    auto pathStrLen{ strlen(path) };
+    if (!strcmp(path + pathStrLen - 8, "vert.spv"))
     {
         stageFlagBits = VK_SHADER_STAGE_VERTEX_BIT;
     }
-    else if (path.ends_with(".frag.spv"))
+    else if (!strcmp(path + pathStrLen - 8, "frag.spv"))
     {
         stageFlagBits = VK_SHADER_STAGE_FRAGMENT_BIT;
     }
@@ -1244,7 +1063,7 @@ auto ar::Shader::create(std::string_view path, Constants const& constants) noexc
         }
 
         spec.pData = constants.pData;
-        spec.mapEntryCount = static_cast<u32_t>(constants.entries.size());
+        spec.mapEntryCount = static_cast<u32>(constants.entries.size());
         spec.pMapEntries = entries;
     }
 
@@ -1255,10 +1074,8 @@ auto ar::Shader::create(std::string_view path, Constants const& constants) noexc
         .pSpecializationInfo = &spec
     };
 
-#ifdef _WIN32
-
     auto const file{ ::CreateFileA(
-        path.data(),
+        path,
         GENERIC_READ,
         FILE_SHARE_READ,
         nullptr,
@@ -1279,21 +1096,21 @@ auto ar::Shader::create(std::string_view path, Constants const& constants) noexc
         error();
     }
 
-    auto pBuffer{ new u8_t[fileSize.QuadPart] };
+    auto pBuffer{ new u8[fileSize.QuadPart] };
     auto bytesRead{ DWORD{} };
 
     if (!::ReadFile(file, pBuffer, fileSize.LowPart, &bytesRead, nullptr))
     {
+        ::CloseHandle(file);
         error();
     }
 
     ::CloseHandle(file);
 
-
     auto const shaderModuleCI{ VkShaderModuleCreateInfo{
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = static_cast<size_t>(fileSize.QuadPart),
-        .pCode = reinterpret_cast<u32_t*>(pBuffer)
+        .pCode = reinterpret_cast<u32*>(pBuffer)
     }};
 
     arContext::resultCheck(vkCreateShaderModule(
@@ -1304,10 +1121,9 @@ auto ar::Shader::create(std::string_view path, Constants const& constants) noexc
     ));
 
     delete[] pBuffer;
-#endif
 }
 
-auto ar::Shader::create(u32_t const* pSpirv, size_t size, ShaderStage stage, Constants const& constants) noexcept -> void
+void ar::Shader::create(u32 const* pSpirv, size_t size, ShaderStage stage, Constants const& constants) noexcept
 {
     spec = {};
 
@@ -1321,7 +1137,7 @@ auto ar::Shader::create(u32_t const* pSpirv, size_t size, ShaderStage stage, Con
         }
 
         spec.pData = constants.pData;
-        spec.mapEntryCount = static_cast<u32_t>(constants.entries.size());
+        spec.mapEntryCount = static_cast<u32>(constants.entries.size());
         spec.pMapEntries = entries;
     }
 
@@ -1346,7 +1162,7 @@ auto ar::Shader::create(u32_t const* pSpirv, size_t size, ShaderStage stage, Con
     ));
 }
 
-auto ar::Shader::destroy() noexcept -> void
+void ar::Shader::destroy() noexcept
 {
     vkDestroyShaderModule(g_ctx.device, shaderStage.module, nullptr);
 }
@@ -1354,7 +1170,7 @@ auto ar::Shader::destroy() noexcept -> void
 #pragma endregion
 #pragma region Pipeline
 
-auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
+void ar::Pipeline::create(GraphicsConfig&& config) noexcept
 {
     VkPipelineShaderStageCreateInfo shaderStages[6];
     VkPipelineColorBlendAttachmentState blendAttachments[8];
@@ -1385,7 +1201,7 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
         };
     }
 
-    for (auto i{ u32_t{} }; auto const& shader : config.shaders)
+    for (auto i{ u32{} }; auto const& shader : config.shaders)
     {
         shaderStages[i] = shader.shaderStage;
         ++i;
@@ -1429,14 +1245,14 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
     auto const colorBlendStateCreateInfo{ VkPipelineColorBlendStateCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
         .logicOp = VK_LOGIC_OP_COPY, // TODO
-        .attachmentCount = static_cast<u32_t>(config.attachments.size()),
+        .attachmentCount = static_cast<u32>(config.attachments.size()),
         .pAttachments = blendAttachments
     }};
 
     auto const depthStencilStateCreateInfo{ VkPipelineDepthStencilStateCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = static_cast<u32_t>(config.depthStencilState.depthTestEnable),
-        .depthWriteEnable = static_cast<u32_t>(config.depthStencilState.depthWriteEnable),
+        .depthTestEnable = static_cast<u32>(config.depthStencilState.depthTestEnable),
+        .depthWriteEnable = static_cast<u32>(config.depthStencilState.depthWriteEnable),
         .depthCompareOp = static_cast<VkCompareOp>(config.depthStencilState.compareOp)
     }};
 
@@ -1446,7 +1262,7 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
 
     auto const renderingCreateInfo{ VkPipelineRenderingCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-        .colorAttachmentCount = static_cast<u32_t>(config.attachments.size()),
+        .colorAttachmentCount = static_cast<u32>(config.attachments.size()),
         .pColorAttachmentFormats = colorAttachmentFormats,
         .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
         .stencilAttachmentFormat = VK_FORMAT_UNDEFINED
@@ -1455,7 +1271,7 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
     auto const pipelineCreateInfo{ VkGraphicsPipelineCreateInfo{
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &renderingCreateInfo,
-        .stageCount = static_cast<u32_t>(config.shaders.size()),
+        .stageCount = static_cast<u32>(config.shaders.size()),
         .pStages = shaderStages,
         .pVertexInputState = &vertexInputStateCreateInfo,
         .pInputAssemblyState = &inputAssemblyStateCreateInfo,
@@ -1478,7 +1294,7 @@ auto ar::Pipeline::create(GraphicsConfig&& config) noexcept -> void
     ));
 }
 
-auto ar::Pipeline::destroy() noexcept -> void
+void ar::Pipeline::destroy() noexcept
 {
     vkDestroyPipeline(g_ctx.device, handle, nullptr);
 }
@@ -1486,7 +1302,7 @@ auto ar::Pipeline::destroy() noexcept -> void
 #pragma endregion
 #pragma region Buffer
 
-auto ar::Buffer::create(size_t bufferCapacity) noexcept -> void
+void ar::Buffer::create(size_t bufferCapacity) noexcept
 {
     static constexpr auto usage{ VkBufferUsageFlags{
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
@@ -1532,7 +1348,7 @@ auto ar::Buffer::create(size_t bufferCapacity) noexcept -> void
     address = vkGetBufferDeviceAddress(g_ctx.device, &bufferDAI);
 }
 
-auto ar::Buffer::create(void const* pData, size_t dataSize) noexcept -> void
+void ar::Buffer::create(void const* pData, size_t dataSize) noexcept
 {
     pMapped = nullptr;
     capacity = dataSize;
@@ -1638,7 +1454,7 @@ auto ar::Buffer::create(void const* pData, size_t dataSize) noexcept -> void
     }
 }
 
-auto ar::Buffer::destroy() noexcept -> void
+void ar::Buffer::destroy() noexcept
 {
     if (pMapped)
     {
@@ -1655,9 +1471,9 @@ auto ar::Buffer::destroy() noexcept -> void
     );
 }
 
-auto ar::Buffer::write(void const* pData, size_t size, size_t offset) noexcept -> void
+void ar::Buffer::write(void const* pData, size_t size, size_t offset) noexcept
 {
-    size = static_cast<b8_t>(size) * size + !static_cast<b8_t>(size) * capacity;
+    size = static_cast<b8>(size) * size + !static_cast<b8>(size) * capacity;
     memcpy(pMapped + offset, pData, size);
     arContext::resultCheck(vmaFlushAllocation(
         g_ctx.allocator,
@@ -1670,12 +1486,12 @@ auto ar::Buffer::write(void const* pData, size_t size, size_t offset) noexcept -
 #pragma endregion
 #pragma region Image
 
-static auto makeImageResident(ar::ImageCreateInfo const& imageCI, ar::Image& image) noexcept -> void
+static void makeImageResident(ar::ImageCreateInfo const& imageCI, ar::Image& image) noexcept
 {
-    if (static_cast<b8_t>(imageCI.sampler))
+    if (static_cast<b8>(imageCI.sampler))
     {
         auto const writeImage{ VkDescriptorImageInfo{
-            .sampler = *(&g_ctx.linearToEdgeSampler + (static_cast<u8_t>(imageCI.sampler) - 1)),
+            .sampler = *(&g_ctx.linearToEdgeSampler + (static_cast<u8>(imageCI.sampler) - 1)),
             .imageView = image.view,
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         }};
@@ -1699,13 +1515,13 @@ static auto makeImageResident(ar::ImageCreateInfo const& imageCI, ar::Image& ima
     }
 }
 
-auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
+void ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept
 {
     sampler = imageCreateInfo.sampler;
-    width = static_cast<b8_t>(imageCreateInfo.width) * imageCreateInfo.width +
-           !static_cast<b8_t>(imageCreateInfo.width) * g_ctx.surfaceExtent.width;
-    height = static_cast<b8_t>(imageCreateInfo.height) * imageCreateInfo.height +
-            !static_cast<b8_t>(imageCreateInfo.height) * g_ctx.surfaceExtent.height;
+    width = static_cast<b8>(imageCreateInfo.width) * imageCreateInfo.width +
+           !static_cast<b8>(imageCreateInfo.width) * g_ctx.surfaceExtent.width;
+    height = static_cast<b8>(imageCreateInfo.height) * imageCreateInfo.height +
+            !static_cast<b8>(imageCreateInfo.height) * g_ctx.surfaceExtent.height;
 
     VkFormat format;
     VkImageAspectFlags aspect;
@@ -1729,7 +1545,7 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
     }
 
     sampleCount = imageCreateInfo.useMsaa ? VK_SAMPLE_COUNT_4_BIT : VK_SAMPLE_COUNT_1_BIT;
-    usage |= VK_IMAGE_USAGE_SAMPLED_BIT * static_cast<b8_t>(imageCreateInfo.sampler);
+    usage |= VK_IMAGE_USAGE_SAMPLED_BIT * static_cast<b8>(imageCreateInfo.sampler);
     usage |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT * imageCreateInfo.useMsaa;
 
     auto const imageCI{ VkImageCreateInfo{
@@ -1802,7 +1618,7 @@ auto ar::Image::create(ImageCreateInfo const& imageCreateInfo) noexcept -> void
     makeImageResident(imageCreateInfo, *this);
 }
 
-auto ar::Image::destroy() noexcept -> void
+void ar::Image::destroy() noexcept
 {
     vkDestroyImageView(g_ctx.device, view, nullptr);
     vmaDestroyImage(g_ctx.allocator, handle, allocation);
@@ -1811,7 +1627,7 @@ auto ar::Image::destroy() noexcept -> void
 #pragma endregion
 #pragma region Context
 
-static auto arContext::acquireImage() noexcept -> b8_t
+static b8 arContext::acquireImage() noexcept
 {
     arContext::resultCheck(vkWaitForFences(g_ctx.device, 1u, &g_ctx.fence, 0u, ~0ull));
     arContext::resultCheck(vkResetFences(g_ctx.device, 1u, &g_ctx.fence));
@@ -1839,7 +1655,7 @@ static auto arContext::acquireImage() noexcept -> b8_t
     }
 }
 
-static auto arContext::presentFrame() noexcept -> b8_t
+static b8 arContext::presentFrame() noexcept
 {
     auto stage{ VkPipelineStageFlags{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT} };
     g_ctx.submitInfo.pWaitDstStageMask = &stage;
@@ -1881,13 +1697,13 @@ static auto arContext::presentFrame() noexcept -> b8_t
     }
 }
 
-static auto arContext::create() noexcept -> void
+static void arContext::create() noexcept
 {
     {
         volkInitialize();
     }
     {
-        u32_t apiVersion;
+        u32 apiVersion;
         arContext::resultCheck(vkEnumerateInstanceVersion(&apiVersion));
 
         if (apiVersion < VK_API_VERSION_1_3)
@@ -1899,11 +1715,7 @@ static auto arContext::create() noexcept -> void
 
         char const* extensions[] = {
             VK_KHR_SURFACE_EXTENSION_NAME,
-            #ifdef VK_KHR_win32_surface
             VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-            #else
-            VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
-            #endif
             #ifdef AR_ENABLE_INFO_CALLBACK
             VK_EXT_DEBUG_UTILS_EXTENSION_NAME
             #endif
@@ -1924,11 +1736,6 @@ static auto arContext::create() noexcept -> void
         #endif
 
         auto const applicationInfo{ VkApplicationInfo{
-            .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-            .pApplicationName = "ar",
-            .applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
-            .pEngineName = "ar",
-            .engineVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
             .apiVersion = apiVersion
         }};
 
@@ -1939,9 +1746,9 @@ static auto arContext::create() noexcept -> void
             #endif
             .pApplicationInfo = &applicationInfo,
             #ifdef AR_ENABLE_INFO_CALLBACK
-            .enabledLayerCount = static_cast<u32_t>(g_ctx.messenger.enableValidationLayers),
+            .enabledLayerCount = static_cast<u32>(g_ctx.messenger.enableValidationLayers),
             .ppEnabledLayerNames = layers,
-            .enabledExtensionCount = 2u + static_cast<u32_t>(g_ctx.messenger.enableValidationLayers),
+            .enabledExtensionCount = 2u + static_cast<u32>(g_ctx.messenger.enableValidationLayers),
             #else
             .enabledExtensionCount = 2u,
             #endif
@@ -1973,28 +1780,19 @@ static auto arContext::create() noexcept -> void
                     [[maybe_unused]] VkDebugUtilsMessageSeverityFlagBitsEXT severity,
                     [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT type,
                     VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData,
-                    void* pUserData
+                    [[maybe_unused]] void* pUserData
                 )
                 {
-                    reinterpret_cast<void(*)(std::string_view)>(
-                        pUserData
-                    )(pCallbackData->pMessage);
-
+                    g_infoCallback(pCallbackData->pMessage);
                     return 0u;
                 }
-            },
-            .pUserData = reinterpret_cast<void*>(g_infoCallback)
+            }
         }};
 
-        arContext::resultCheck(
-            reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(g_ctx.instance, "vkCreateDebugUtilsMessengerEXT"))
-            (g_ctx.instance, &messengerCI, nullptr, &g_ctx.messenger.handle)
-        );
-
+        arContext::resultCheck(vkCreateDebugUtilsMessengerEXT(g_ctx.instance, &messengerCI, nullptr, &g_ctx.messenger.handle));
         g_infoCallback("Validation Layers are enabled. Prefer disabling them in release build");
     }
     #endif
-    #if defined(VK_KHR_win32_surface)
     {
         auto const surfaceCI{ VkWin32SurfaceCreateInfoKHR{
             .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
@@ -2004,20 +1802,9 @@ static auto arContext::create() noexcept -> void
 
         arContext::resultCheck(vkCreateWin32SurfaceKHR(g_ctx.instance, &surfaceCI, nullptr, &g_ctx.surface));
     }
-    #else
-    {
-        auto const surfaceCI{ VkXlibSurfaceCreateInfoKHR{
-            .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
-            .dpy = g_wnd.dpy,
-            .window = g_wnd.xwnd
-        }};
-
-        arContext::resultCheck(vkCreateXlibSurfaceKHR(g_ctx.instance, &surfaceCI, nullptr, &g_ctx.surface));
-    }
-    #endif
     {
         VkPhysicalDevice physicalDevices[64];
-        u32_t physicalDeviceCount;
+        u32 physicalDeviceCount;
 
         arContext::resultCheck(vkEnumeratePhysicalDevices(g_ctx.instance, &physicalDeviceCount, nullptr));
         arContext::resultCheck(vkEnumeratePhysicalDevices(g_ctx.instance, &physicalDeviceCount, physicalDevices));
@@ -2068,8 +1855,8 @@ static auto arContext::create() noexcept -> void
     }
     {
         VkQueueFamilyProperties properties[64];
-        u32_t propertyCount;
-        u32_t presentQueueIndex;
+        u32 propertyCount;
+        u32 presentQueueIndex;
 
         vkGetPhysicalDeviceQueueFamilyProperties(g_ctx.physicalDevice, &propertyCount, nullptr);
         vkGetPhysicalDeviceQueueFamilyProperties(g_ctx.physicalDevice, &propertyCount, properties);
@@ -2110,9 +1897,7 @@ static auto arContext::create() noexcept -> void
         AR_INFO_CALLBACK("Present Family: [%u], Present Family Index: [%u]", g_ctx.presentFamily, presentQueueIndex)
         AR_INFO_CALLBACK("Graphics and Present queues are %s", g_ctx.unifiedPresent ? "unified [worse case]" : "separated [better case]")
 
-        f32_t const queuePriorities[] = {
-            1.f, 1.f
-        };
+        f32 const queuePriorities[] = { 1.f, 1.f };
 
         VkDeviceQueueCreateInfo queueCI[] = {
             {
@@ -2370,16 +2155,14 @@ static auto arContext::create() noexcept -> void
     AR_INFO_CALLBACK("%s", "Created Context")
 }
 
-static auto arContext::teardown() noexcept -> void
+static void arContext::teardown() noexcept
 {
     if (!g_ctx.unifiedPresent)
     vkDestroySemaphore(g_ctx.device, g_ctx.presentSemaphore, nullptr);
     vkDestroySemaphore(g_ctx.device, g_ctx.graphicsSemaphore, nullptr);
     vkDestroySemaphore(g_ctx.device, g_ctx.acquireSemaphore, nullptr);
     vkDestroyFence(g_ctx.device, g_ctx.fence, nullptr);
-
     teardownSwapchain();
-
     vmaDestroyAllocator(g_ctx.allocator);
     vkDestroySampler(g_ctx.device, g_ctx.linearRepeatSampler, nullptr);
     vkDestroySampler(g_ctx.device, g_ctx.linearToEdgeSampler, nullptr);
@@ -2390,22 +2173,16 @@ static auto arContext::teardown() noexcept -> void
     vkDestroyDescriptorPool(g_ctx.device, g_ctx.descriptorPool, nullptr);
     vkDestroyCommandPool(g_ctx.device, g_ctx.transferCommandPool, nullptr);
     vkDestroyDevice(g_ctx.device, nullptr);
-
     vkDestroySurfaceKHR(g_ctx.instance, g_ctx.surface, nullptr);
     #ifdef AR_ENABLE_INFO_CALLBACK
-    if (g_ctx.messenger.handle)
-    {
-        reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-            vkGetInstanceProcAddr(g_ctx.instance, "vkDestroyDebugUtilsMessengerEXT")
-        )(g_ctx.instance, g_ctx.messenger.handle, nullptr);
-    }
+    vkDestroyDebugUtilsMessengerEXT(g_ctx.instance, g_ctx.messenger.handle, nullptr);
     #endif
     vkDestroyInstance(g_ctx.instance, nullptr);
 
     AR_INFO_CALLBACK("%s", "Destroyed Context")
 }
 
-static auto arContext::createSwapchain(b8_t vsync) noexcept -> void
+static void arContext::createSwapchain(b8 vsync) noexcept
 {
     arContext::teardownSwapchain();
     g_ctx.vsyncEnabled = vsync;
@@ -2415,9 +2192,9 @@ static auto arContext::createSwapchain(b8_t vsync) noexcept -> void
     VkSurfaceCapabilitiesKHR capabilities;
     VkCompositeAlphaFlagBitsKHR compositeAlpha;
 
-    u32_t minImageCount;
-    u32_t formatCount;
-    u32_t presentModeCount;
+    u32 minImageCount;
+    u32 formatCount;
+    u32 presentModeCount;
 
     arContext::resultCheck(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_ctx.physicalDevice, g_ctx.surface, &capabilities));
     arContext::resultCheck(vkGetPhysicalDeviceSurfaceFormatsKHR(g_ctx.physicalDevice, g_ctx.surface, &formatCount, nullptr));
@@ -2427,8 +2204,8 @@ static auto arContext::createSwapchain(b8_t vsync) noexcept -> void
 
     if (capabilities.currentExtent.width == 0xffffffffu)
     {
-        g_ctx.surfaceExtent.width = static_cast<u32_t>(g_wnd.width);
-        g_ctx.surfaceExtent.height = static_cast<u32_t>(g_wnd.height);
+        g_ctx.surfaceExtent.width = static_cast<u32>(g_wnd.width);
+        g_ctx.surfaceExtent.height = static_cast<u32>(g_wnd.height);
 
         if (g_ctx.surfaceExtent.width > capabilities.maxImageExtent.width)
         {
@@ -2455,14 +2232,14 @@ static auto arContext::createSwapchain(b8_t vsync) noexcept -> void
         g_ctx.surfaceExtent = capabilities.currentExtent;
     }
 
-    minImageCount = g_minImageCount<u32_t>;
+    minImageCount = g_minImageCount<u32>;
 
-    if (capabilities.minImageCount > g_minImageCount<u32_t>)
+    if (capabilities.minImageCount > g_minImageCount<u32>)
     {
         minImageCount = capabilities.minImageCount;
     }
 
-    if (capabilities.maxImageCount && capabilities.maxImageCount < g_minImageCount<u32_t>)
+    if (capabilities.maxImageCount && capabilities.maxImageCount < g_minImageCount<u32>)
     {
         minImageCount = capabilities.maxImageCount;
     }
@@ -2559,18 +2336,17 @@ static auto arContext::createSwapchain(b8_t vsync) noexcept -> void
         arContext::resultCheck(vkCreateCommandPool(g_ctx.device, &commandPoolCI, nullptr, &g_ctx.presentCommandPool));
     }
 
-    VkImage images[g_maxImageCount<u32_t>];
+    VkImage images[g_maxImageCount<u32>];
 
     arContext::resultCheck(vkGetSwapchainImagesKHR(g_ctx.device, g_ctx.swapchain, &g_ctx.imageCount, nullptr));
-    if (g_ctx.imageCount > g_maxImageCount<u32_t>)
+    if (g_ctx.imageCount > g_maxImageCount<u32>)
         arContext::resultCheck(VK_ERROR_INITIALIZATION_FAILED);
     arContext::resultCheck(vkGetSwapchainImagesKHR(g_ctx.device, g_ctx.swapchain, &g_ctx.imageCount, images));
 
     AR_INFO_CALLBACK("Swapchain image count: [%u]", g_ctx.imageCount)
 
-    VkCommandBuffer graphicsCommandBuffers[g_maxImageCount<u32_t>];
-    VkCommandBuffer presentCommandBuffers[g_maxImageCount<u32_t>];
-
+    VkCommandBuffer graphicsCommandBuffers[g_maxImageCount<u32>];
+    VkCommandBuffer presentCommandBuffers[g_maxImageCount<u32>];
     auto commandBufferAI{ VkCommandBufferAllocateInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = g_ctx.graphicsCommandPool,
@@ -2639,7 +2415,7 @@ static auto arContext::createSwapchain(b8_t vsync) noexcept -> void
     AR_INFO_CALLBACK("Created swapchain: width [%u], height [%u]", g_ctx.surfaceExtent.width, g_ctx.surfaceExtent.height)
 }
 
-static auto arContext::teardownSwapchain() noexcept -> void
+static void arContext::teardownSwapchain() noexcept
 {
     arContext::resultCheck(vkDeviceWaitIdle(g_ctx.device));
 
@@ -2665,7 +2441,7 @@ static auto arContext::teardownSwapchain() noexcept -> void
     }
 }
 
-static auto arContext::beginTransfer() noexcept -> void
+static void arContext::beginTransfer() noexcept
 {
     auto const beginInfo{ VkCommandBufferBeginInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -2676,7 +2452,7 @@ static auto arContext::beginTransfer() noexcept -> void
     arContext::resultCheck(vkBeginCommandBuffer(g_ctx.transferCommandBuffer, &beginInfo));
 }
 
-static auto arContext::endTransfer() noexcept -> void
+static void arContext::endTransfer() noexcept
 {
     arContext::resultCheck(vkEndCommandBuffer(g_ctx.transferCommandBuffer));
 
@@ -2690,7 +2466,7 @@ static auto arContext::endTransfer() noexcept -> void
     arContext::resultCheck(vkQueueWaitIdle(g_ctx.graphicsQueue));
 }
 
-auto arContext::layoutToStage(ar::ImageLayout layout) noexcept -> VkPipelineStageFlags2
+VkPipelineStageFlags2 arContext::layoutToStage(ar::ImageLayout layout) noexcept
 {
     switch (layout)
     {
@@ -2706,7 +2482,7 @@ auto arContext::layoutToStage(ar::ImageLayout layout) noexcept -> VkPipelineStag
     }
 }
 
-auto arContext::layoutToAccess(ar::ImageLayout layout) noexcept -> VkAccessFlags2
+VkAccessFlags2 arContext::layoutToAccess(ar::ImageLayout layout) noexcept
 {
     switch (layout)
     {
@@ -2723,13 +2499,7 @@ auto arContext::layoutToAccess(ar::ImageLayout layout) noexcept -> VkAccessFlags
     }
 }
 
-static auto arContext::createImageView(
-    VkImage image,
-    VkImageViewType type,
-    VkFormat format,
-    VkImageAspectFlags aspect,
-    u32_t mipLevels
-) noexcept -> VkImageView
+static VkImageView arContext::createImageView(VkImage image, VkImageViewType type, VkFormat format, VkImageAspectFlags aspect, u32 mipLevels) noexcept
 {
     auto const viewCI{ VkImageViewCreateInfo{
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -2755,7 +2525,7 @@ static auto arContext::createImageView(
     return view;
 }
 
-static auto arContext::resultCheck(VkResult result) noexcept -> void
+static void arContext::resultCheck(VkResult result) noexcept
 {
     if (result) [[unlikely]]
     {

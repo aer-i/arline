@@ -1,14 +1,14 @@
 #include <Arline.hxx>
-#include "shader.inl"
 #include "vertices.inl"
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <array>
 
 struct SceneData
 {
-    std::array<ar::f32_t, 16> cameraProjectionMatrix;
-    std::array<ar::f32_t, 16> cubeMatrix;
+    std::array<ar::f32, 16> cameraProjectionMatrix;
+    std::array<ar::f32, 16> cubeMatrix;
 };
 
 static ar::Image color, resolve, depth;
@@ -57,8 +57,8 @@ init() noexcept -> void
     sceneBuffer.create(sizeof(sceneData));
 
     ar::Shader vert, frag;
-    vert.create(shaders::vert, sizeof(shaders::vert), ar::ShaderStage::eVertex);
-    frag.create(shaders::frag, sizeof(shaders::frag), ar::ShaderStage::eFragment);
+    frag.create("shaders/main.frag.spv");
+    vert.create("shaders/main.vert.spv");
 
     pipeline.create(ar::GraphicsConfig{
         .shaders = { vert, frag },
@@ -76,8 +76,8 @@ init() noexcept -> void
     frag.destroy();
     vert.destroy();
 
-    vert.create(shaders::finalImageVert, sizeof(shaders::finalImageVert), ar::ShaderStage::eVertex);
-    frag.create(shaders::finalImageFrag, sizeof(shaders::finalImageFrag), ar::ShaderStage::eFragment);
+    vert.create("shaders/finalImage.vert.spv");
+    frag.create("shaders/finalImage.frag.spv");
 
     finalImagePipeline.create(ar::GraphicsConfig{
         .shaders = { vert, frag },
@@ -112,7 +112,7 @@ resize() noexcept -> void
 static auto
 recordCommands(ar::GraphicsCommands cmd) noexcept -> void
 {
-    ar::u64_t const pushConstant[] = {
+    ar::u64 const pushConstant[] = {
         vertexBuffer.address,
         colorBuffer.address,
         sceneBuffer.address
@@ -162,9 +162,9 @@ update() noexcept -> void
 {
     ar::pollEvents();
 
-    ar::f32_t aspectRatio = ar::getFramebufferAspectRatio();
-    ar::f32_t time = ar::getTimef();
-    ar::f32_t c = cosf(time), s = sinf(time);
+    ar::f32 aspectRatio = ar::getFramebufferAspectRatio();
+    ar::f32 time = ar::getTimef();
+    ar::f32 c = cosf(time), s = sinf(time);
 
     sceneData.cameraProjectionMatrix = {
         1.f / aspectRatio, 0.0f, 0.0f, 0.0f,
@@ -190,33 +190,33 @@ resourcesUpdate() noexcept -> ar::Request
 }
 
 static auto
-infoCallback(std::string_view message) noexcept -> void
+infoCallback(char const* message) noexcept -> void
 {
-    std::printf("%s\n", message.data());
+    std::printf("%s\n", message);
 }
 
 [[noreturn]] static auto
-errorCallback(std::string_view message) noexcept -> void
+errorCallback(char const* message) noexcept -> void
 {
     ar::messageBoxError(message);
     std::terminate();
 }
 
 [[nodiscard]] auto
-main() noexcept -> ar::i32_t
+main() noexcept -> ar::s32
 {
-    return ar::execute(ar::AppInfo{
-        .onInit = init,
-        .onDestroy = teardown,
-        .onCommandsRecord = recordCommands,
-        .onResourcesUpdate = resourcesUpdate,
-        .onUpdate = update,
-        .onResize = resize,
-        .title = "Cube",
-        .width = 1280,
-        .height = 720,
+
+    ar::execute(ar::AppInfo{
         .infoCallback = infoCallback,
         .errorCallback = errorCallback,
+        .onInit = init,
+        .onDestroy = teardown,
+        .onResize = resize,
+        .onCommandsRecord = recordCommands,
+        .onUpdate = update,
+        .onResourcesUpdate = resourcesUpdate,
+        .width = 1280,
+        .height = 720,
         .enableValidationLayers = true,
         .enalbeVsync = true
     });
