@@ -1,17 +1,19 @@
 cmake_minimum_required(VERSION 3.26)
 
-project(arline CXX)
+find_package(Vulkan REQUIRED)
+
+project(arline C)
 option(AR_BUILD_EXAMPLES "Build arline examples")
 option(AR_ENABLE_INFO_CALLBACK "Enable info callback - should be disabled for release builds.")
 
 add_library(arline)
-target_compile_features(arline PRIVATE cxx_std_23)
-target_sources(arline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/arline/Arline.cxx)
+target_sources(arline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/arline/arline.c)
 target_include_directories(arline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/arline/)
-target_compile_options(arline PRIVATE
-$<$<CXX_COMPILER_ID:MSVC>:/W4>
-$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wpedantic>
-)
+target_link_libraries(arline PUBLIC Vulkan::Vulkan dwmapi)
+set_target_properties(arline PROPERTIES LINK_FLAGS "/NODEFAULTLIB")
+target_compile_options(arline PRIVATE /GS-)
+target_compile_options(arline PRIVATE /GR-)
+target_compile_options(arline PRIVATE /nologo)
 
 if (AR_ENABLE_INFO_CALLBACK)
     target_compile_definitions(arline PRIVATE AR_ENABLE_INFO_CALLBACK)

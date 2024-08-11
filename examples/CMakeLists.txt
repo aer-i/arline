@@ -1,2 +1,2 @@
 add_subdirectory(triangle)
-add_subdirectory(rotating-cube)
+#add_subdirectory(rotating-cube)
