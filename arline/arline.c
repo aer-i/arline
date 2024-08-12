@@ -1,68 +1,122 @@
 #include "arline.h"
 
+#define internal static
+#define global static
 #define VK_USE_PLATFORM_WIN32_KHR
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <vulkan/vulkan.h>
 #include <dwmapi.h>
 
-typedef struct SwapchainImage {
+typedef struct
+{
     VkCommandBuffer cmd;
-    VkImage handle;
+    VkImage image;
     VkImageView view;
-} SwapchainImage;
+}
+ArFrame;
 
-struct {
+struct
+{
+    void (*pfnUpdate)();
+    void (*pfnResize)();
+    void (*pfnRecordCommands)(ArCommandBuffer);
     HINSTANCE hinstance;
     HWND hwnd;
     VkInstance instance;
     VkPhysicalDevice gpu;
     VkSurfaceKHR surface;
     VkCommandPool commandPool;
+    VkPipelineLayout pipelineLayout;
+    uint32_t imageIndex;
+    uint32_t imageCount;
     VkDevice device;
     VkQueue queue;
     VkSwapchainKHR swapchain;
-    VkSemaphore semaphoreAcquire;
-    VkSemaphore semaphoreRender;
     VkFence fence;
-    uint32_t imageIndex;
-    uint32_t imageCount;
-    SwapchainImage images[6];
+    VkSemaphoreSubmitInfo waitSemaphoreInfo;
+    VkCommandBufferSubmitInfo commandBufferInfo;
+    VkSemaphoreSubmitInfo signalSemaphoreInfo;
+    VkSubmitInfo2 submitInfo;
+    VkPresentInfoKHR presentInfo;
+    ArFrame frames[6];
     VkExtent2D extent;
-    int32_t width, height;
-} static g;
+    int width, height;
+    bool windowShouldClose;
+}
+global g;
 
-static LRESULT arWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+internal void arWindowCreate(int width, int height);
+internal void arWindowTeardown(void);
+internal void arSwapchainCreate(void);
+internal void arSwapchainTeardown(void);
+internal void arSwapchainRecreate(void);
+internal void arContextCreate(void);
+internal void arContextTeardown(void);
+internal void arRecordCommands(void);
+
+internal LRESULT
+arWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     switch (msg)
     {
+    case WM_SIZE:
+        g.width = LOWORD(lp);
+        g.height = HIWORD(lp);
+
+        while (!g.width || !g.height)
+        {
+            g.pfnUpdate();
+
+            if (g.windowShouldClose)
+            {
+                return(0);
+            }
+        }
+
+        arSwapchainRecreate();
+        break;
+    case WM_GETMINMAXINFO:
+        ((PMINMAXINFO)lp)->ptMinTrackSize.x = 150;
+        ((PMINMAXINFO)lp)->ptMinTrackSize.y = 150;
+        break;
+    case WM_CLOSE:
+        g.windowShouldClose = true;
+        break;
     case WM_DESTROY:
         PostQuitMessage(0);
         break;
     default:
-        return DefWindowProcA(hwnd, msg, wp, lp);
+        return(DefWindowProcA(hwnd, msg, wp, lp));
     }
 
-    return 0;
+    return(0);
 }
 
-static void arWindowCreate(int width, int height)
+internal void
+arWindowCreate(int width, int height)
 {
     g.hinstance = GetModuleHandleA(NULL);
 
-    WNDCLASSEXA wc = { 0 };
+    WNDCLASSEXA wc;
     wc.cbSize = sizeof(wc);
-    wc.style = CS_OWNDC;
+    wc.style = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
     wc.lpfnWndProc = arWndProc;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = 0;
     wc.hInstance = g.hinstance;
-    wc.hCursor = LoadCursorA(g.hinstance, IDC_ARROW);
+    wc.hIcon = NULL;
+    wc.hCursor = LoadCursorA(NULL, MAKEINTRESOURCEA(32512));
+    wc.hbrBackground = NULL;
+    wc.lpszMenuName = NULL;
     wc.lpszClassName = "arline";
+    wc.hIconSm = NULL;
 
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     RegisterClassExA(&wc);
 
     g.hwnd = CreateWindowExA(
-        WS_EX_DLGMODALFRAME, "arline", "", WS_OVERLAPPEDWINDOW,
+        WS_EX_DLGMODALFRAME, "arline", NULL, WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, width, height,
         NULL, NULL, g.hinstance, NULL
     );
@@ -70,27 +124,28 @@ static void arWindowCreate(int width, int height)
     BOOL useDarkMode = true;
     DwmSetWindowAttribute(g.hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDarkMode, sizeof(useDarkMode));
     ShowWindow(g.hwnd, SW_SHOW);
-    UpdateWindow(g.hwnd);
 }
 
-static void arWindowTeardown()
+internal void
+arWindowTeardown(void)
 {
     DestroyWindow(g.hwnd);
     UnregisterClassA("arline", g.hinstance);
 }
 
-static void arSwapchainCreate()
+internal void
+arSwapchainCreate(void)
 {
-    VkSurfaceCapabilitiesKHR caps;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g.gpu, g.surface, &caps);
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g.gpu, g.surface, &surfaceCapabilities);
 
-    g.extent.width  = caps.currentExtent.width;
-    g.extent.height = caps.currentExtent.height;
+    g.extent.width  = surfaceCapabilities.currentExtent.width;
+    g.extent.height = surfaceCapabilities.currentExtent.height;
 
     if (g.extent.width == 0xffffffff)
     {
-        g.extent.width  = caps.minImageExtent.width;
-        g.extent.height = caps.minImageExtent.height;
+        g.extent.width  = surfaceCapabilities.minImageExtent.width;
+        g.extent.height = surfaceCapabilities.minImageExtent.height;
     }
 
     VkSwapchainCreateInfoKHR swapchainCreateInfo;
@@ -98,7 +153,7 @@ static void arSwapchainCreate()
     swapchainCreateInfo.pNext = NULL;
     swapchainCreateInfo.flags = 0;
     swapchainCreateInfo.surface = g.surface;
-    swapchainCreateInfo.minImageCount = caps.minImageCount > 3 ? caps.minImageCount : 3;
+    swapchainCreateInfo.minImageCount = surfaceCapabilities.minImageCount > 3 ? surfaceCapabilities.minImageCount : 3;
     swapchainCreateInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
     swapchainCreateInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     swapchainCreateInfo.imageExtent = g.extent;
@@ -135,8 +190,8 @@ static void arSwapchainCreate()
 
     for (uint32_t i = g.imageCount; i--; )
     {
-        g.images[i].cmd = commandBuffers[i];
-        g.images[i].handle = swapchainImages[i];
+        g.frames[i].cmd = commandBuffers[i];
+        g.frames[i].image = swapchainImages[i];
 
         VkImageViewCreateInfo imageViewCreateInfo;
         imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -154,22 +209,58 @@ static void arSwapchainCreate()
         imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
         imageViewCreateInfo.subresourceRange.layerCount = 1;
         imageViewCreateInfo.subresourceRange.levelCount = 1;
-        vkCreateImageView(g.device, &imageViewCreateInfo, NULL, &g.images[i].view);
+        vkCreateImageView(g.device, &imageViewCreateInfo, NULL, &g.frames[i].view);
     }
+
+    g.submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    g.submitInfo.pNext = NULL;
+    g.submitInfo.flags = 0;
+    g.submitInfo.waitSemaphoreInfoCount = 1;
+    g.submitInfo.pWaitSemaphoreInfos = &g.waitSemaphoreInfo;
+    g.submitInfo.commandBufferInfoCount = 1;
+    g.submitInfo.pCommandBufferInfos = &g.commandBufferInfo;
+    g.submitInfo.signalSemaphoreInfoCount = 1;
+    g.submitInfo.pSignalSemaphoreInfos = &g.signalSemaphoreInfo;
+
+    g.presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    g.presentInfo.pNext = NULL;
+    g.presentInfo.waitSemaphoreCount = 1;
+    g.presentInfo.pWaitSemaphores = &g.signalSemaphoreInfo.semaphore;
+    g.presentInfo.swapchainCount = 1;
+    g.presentInfo.pSwapchains = &g.swapchain;
+    g.presentInfo.pImageIndices = &g.imageIndex;
+    g.presentInfo.pResults = NULL;
 }
 
-static void arSwapchainTeardown()
+internal void
+arSwapchainTeardown(void)
 {
     for (uint32_t i = g.imageCount; i--; )
     {
-        vkDestroyImageView(g.device, g.images[i].view, NULL);
+        vkDestroyImageView(g.device, g.frames[i].view, NULL);
     }
 
     vkDestroyCommandPool(g.device, g.commandPool, NULL);
     vkDestroySwapchainKHR(g.device, g.swapchain, NULL);
 }
 
-static void arContextCreate()
+internal void
+arSwapchainRecreate(void)
+{
+    if (!g.device)
+    {
+        return;
+    }
+
+    vkDeviceWaitIdle(g.device);
+    arSwapchainTeardown();
+    arSwapchainCreate();
+    g.pfnResize();
+    arRecordCommands();
+}
+
+internal void
+arContextCreate(void)
 {
     {
         char const* instanceExtensions[2];
@@ -260,35 +351,12 @@ static void arContextCreate()
         vkGetDeviceQueue(g.device, 0, 0, &g.queue);
     }
     {
-        arSwapchainCreate();
-    }
-    {
-        for (uint32_t i = g.imageCount; i--; )
-        {
-            VkCommandBufferBeginInfo commandBufferBeginInfo;
-            commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            commandBufferBeginInfo.pNext = NULL;
-            commandBufferBeginInfo.flags = 0;
-            commandBufferBeginInfo.pInheritanceInfo = NULL;
-
-            ArCommandBuffer cmd;
-            cmd.pHandle = &g.images[i];
-
-            vkBeginCommandBuffer(g.images[i].cmd, &commandBufferBeginInfo);
-
-            arCmdBeginPresent(cmd);
-            arCmdEndPresent(cmd);
-
-            vkEndCommandBuffer(g.images[i].cmd);
-        }
-    }
-    {
         VkSemaphoreCreateInfo semaphoreCreateInfo;
         semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         semaphoreCreateInfo.pNext = NULL;
         semaphoreCreateInfo.flags = 0;
-        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.semaphoreAcquire);
-        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.semaphoreRender);
+        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.waitSemaphoreInfo.semaphore);
+        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.signalSemaphoreInfo.semaphore);
 
         VkFenceCreateInfo fenceCreateInfo;
         fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
@@ -296,74 +364,161 @@ static void arContextCreate()
         fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
         vkCreateFence(g.device, &fenceCreateInfo, NULL, &g.fence);
     }
+    {
+        g.waitSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        g.waitSemaphoreInfo.pNext = NULL;
+        g.waitSemaphoreInfo.value = 0;
+        g.waitSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        g.waitSemaphoreInfo.deviceIndex = 0;
+
+        g.commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        g.commandBufferInfo.pNext = NULL;
+        g.commandBufferInfo.deviceMask = 0;
+
+        g.signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        g.signalSemaphoreInfo.pNext = NULL;
+        g.signalSemaphoreInfo.value = 0;
+        g.signalSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        g.signalSemaphoreInfo.deviceIndex = 0;
+    }
+    {
+        VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
+        pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutCreateInfo.pNext = NULL;
+        pipelineLayoutCreateInfo.flags = 0;
+        pipelineLayoutCreateInfo.setLayoutCount = 0;
+        pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+        vkCreatePipelineLayout(g.device, &pipelineLayoutCreateInfo, NULL, &g.pipelineLayout);
+    }
+    {
+        arSwapchainCreate();
+    }
 }
 
-static void arContextTeardown()
+internal void
+arContextTeardown(void)
 {
-    vkDeviceWaitIdle(g.device);
-
     arSwapchainTeardown();
+    vkDestroyPipelineLayout(g.device, g.pipelineLayout, NULL);
     vkDestroyFence(g.device, g.fence, NULL);
-    vkDestroySemaphore(g.device, g.semaphoreRender, NULL);
-    vkDestroySemaphore(g.device, g.semaphoreAcquire, NULL);
+    vkDestroySemaphore(g.device, g.signalSemaphoreInfo.semaphore, NULL);
+    vkDestroySemaphore(g.device, g.waitSemaphoreInfo.semaphore, NULL);
     vkDestroyDevice(g.device, NULL);
     vkDestroySurfaceKHR(g.instance, g.surface, NULL);
     vkDestroyInstance(g.instance, NULL);
 }
 
-void arExecute(ArApplicationInfo const* pApplicationInfo)
+void
+arExecute(ArApplicationInfo const* pApplicationInfo)
 {
+    g.pfnUpdate = pApplicationInfo->pfnUpdate;
+    g.pfnResize = pApplicationInfo->pfnResize;
+    g.pfnRecordCommands = pApplicationInfo->pfnRecordCommands;
     arWindowCreate(pApplicationInfo->width, pApplicationInfo->height);
     arContextCreate();
 
-    MSG msg;
-    for (;;)
+    pApplicationInfo->pfnInit();
+    arRecordCommands(); 
+
+    for ( ; ; )
     {
-        while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE))
+        pApplicationInfo->pfnUpdate();
+
+        if (g.windowShouldClose)
         {
-            if (msg.message == WM_QUIT) goto teardown;
-            TranslateMessage(&msg);
-            DispatchMessageA(&msg);
+            break;
         }
 
         vkWaitForFences(g.device, 1, &g.fence, 0, UINT64_MAX);
         vkResetFences(g.device, 1, &g.fence);
 
-        vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.semaphoreAcquire, NULL, &g.imageIndex);
+        vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.waitSemaphoreInfo.semaphore, NULL, &g.imageIndex);
 
-        VkPipelineStageFlags waitDstStageMask;
-        waitDstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-        VkSubmitInfo submitInfo;
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.pNext = NULL;
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitDstStageMask = &waitDstStageMask;
-        submitInfo.pWaitSemaphores = &g.semaphoreAcquire;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &g.images[g.imageIndex].cmd;
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = &g.semaphoreRender;
-        vkQueueSubmit(g.queue, 1, &submitInfo, g.fence);
-
-        VkPresentInfoKHR presentInfo;
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentInfo.pNext = NULL;
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = &g.semaphoreRender;
-        presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = &g.swapchain;
-        presentInfo.pImageIndices = &g.imageIndex;
-        presentInfo.pResults = NULL;
-        vkQueuePresentKHR(g.queue, &presentInfo);
+        g.commandBufferInfo.commandBuffer = g.frames[g.imageIndex].cmd;
+        vkQueueSubmit2(g.queue, 1, &g.submitInfo, g.fence);
+        vkQueuePresentKHR(g.queue, &g.presentInfo);
     }
 
-    teardown:
+    vkDeviceWaitIdle(g.device);
+    pApplicationInfo->pfnTeardown();
     arContextTeardown();
     arWindowTeardown();
 }
 
-void arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo const* pPipelineCreateInfo)
+internal void
+arRecordCommands(void)
+{
+    for (uint32_t i = g.imageCount; i--; )
+    {
+        VkCommandBufferBeginInfo commandBufferBeginInfo;
+        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandBufferBeginInfo.pNext = NULL;
+        commandBufferBeginInfo.flags = 0;
+        commandBufferBeginInfo.pInheritanceInfo = NULL;
+
+        ArCommandBuffer cmd;
+        cmd._data = &g.frames[i];
+
+        vkBeginCommandBuffer(((ArFrame*)cmd._data)->cmd, &commandBufferBeginInfo);
+        g.pfnRecordCommands(cmd);
+        vkEndCommandBuffer(((ArFrame*)cmd._data)->cmd);
+    }
+}
+
+void
+arPollEvents(void)
+{
+    MSG msg;
+    while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE))
+    {
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+    }
+}
+
+void
+arWaitEvents(void)
+{
+    WaitMessage();
+    arPollEvents();
+}
+
+void
+arCreateShaderFromFile(ArShader* pShader, char const* filename)
+{
+    LARGE_INTEGER fileSize;
+    HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    GetFileSizeEx(file, &fileSize);
+
+    uint32_t* pBuffer = HeapAlloc(GetProcessHeap(), 0, fileSize.QuadPart);
+    DWORD bytesRead;
+
+    ReadFile(file, pBuffer, fileSize.LowPart, &bytesRead, NULL);
+    CloseHandle(file);
+    arCreateShaderFromMemory(pShader, pBuffer, fileSize.QuadPart);
+    HeapFree(GetProcessHeap(), 0, pBuffer);
+}
+
+void
+arCreateShaderFromMemory(ArShader* pShader, uint32_t const* pCode, size_t codeSize)
+{
+    VkShaderModuleCreateInfo shaderModuleCreateInfo;
+    shaderModuleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    shaderModuleCreateInfo.pNext = NULL;
+    shaderModuleCreateInfo.flags = 0;
+    shaderModuleCreateInfo.codeSize = codeSize;
+    shaderModuleCreateInfo.pCode = pCode;
+    vkCreateShaderModule(g.device, &shaderModuleCreateInfo, NULL, (VkShaderModule*)pShader);
+}
+
+void
+arDestroyShader(ArShader shader)
+{
+    vkDestroyShaderModule(g.device, shader._data, NULL);
+}
+
+void
+arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo const* pPipelineCreateInfo)
 {
     VkFormat colorFormats[1];
     colorFormats[0] = VK_FORMAT_B8G8R8A8_UNORM;
@@ -377,6 +532,23 @@ void arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInf
     renderingCreateInfo.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
     renderingCreateInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
+    VkPipelineShaderStageCreateInfo shaderStages[2];
+    shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStages[0].pNext = NULL;
+    shaderStages[0].flags = 0;
+    shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    shaderStages[0].module = pPipelineCreateInfo->vertShader._data;
+    shaderStages[0].pName = "main";
+    shaderStages[0].pSpecializationInfo = NULL;
+
+    shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStages[1].pNext = NULL;
+    shaderStages[1].flags = 0;
+    shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    shaderStages[1].module = pPipelineCreateInfo->fragShader._data;
+    shaderStages[1].pName = "main";
+    shaderStages[1].pSpecializationInfo = NULL;
+
     VkPipelineVertexInputStateCreateInfo vertexInputState;
     vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInputState.pNext = NULL;
@@ -389,7 +561,7 @@ void arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInf
     inputAssemblyState.pNext = NULL;
     inputAssemblyState.flags = 0;
     inputAssemblyState.primitiveRestartEnable = false;
-    inputAssemblyState.topology = pPipelineCreateInfo->topology;
+    inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
     VkPipelineViewportStateCreateInfo viewportState;
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -411,15 +583,17 @@ void arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInf
     rasterizationState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizationState.depthBiasEnable = false;
     rasterizationState.lineWidth = 1.0f;
+    rasterizationState.depthBiasClamp = 0.0f;
 
     VkPipelineMultisampleStateCreateInfo multisampleState;
     multisampleState.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampleState.pNext = NULL;
     multisampleState.flags = 0;
     multisampleState.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisampleState.sampleShadingEnable = false;
+    multisampleState.pSampleMask = NULL;
     multisampleState.alphaToCoverageEnable = false;
     multisampleState.alphaToOneEnable = false;
-    multisampleState.sampleShadingEnable = false;
 
     VkPipelineDepthStencilStateCreateInfo depthStencilState;
     depthStencilState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -430,40 +604,62 @@ void arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInf
     depthStencilState.depthWriteEnable = false;
     depthStencilState.depthTestEnable = false;
 
+    VkPipelineColorBlendAttachmentState colorBlendAttachmentState;
+    colorBlendAttachmentState.blendEnable = false;
+    colorBlendAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
     VkPipelineColorBlendStateCreateInfo colorBlendState;
     colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlendState.pNext = NULL;
     colorBlendState.flags = 0;
+    colorBlendState.logicOpEnable = false;
     colorBlendState.attachmentCount = 1;
-    colorBlendState.pAttachments = NULL;
+    colorBlendState.pAttachments = &colorBlendAttachmentState;
+
+    VkDynamicState dynamicStates[2];
+    dynamicStates[0] = VK_DYNAMIC_STATE_VIEWPORT;
+    dynamicStates[1] = VK_DYNAMIC_STATE_SCISSOR;
+
+    VkPipelineDynamicStateCreateInfo dynamicState;
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.pNext = NULL;
+    dynamicState.flags = 0;
+    dynamicState.dynamicStateCount = 2;
+    dynamicState.pDynamicStates = dynamicStates;
 
     VkGraphicsPipelineCreateInfo pipelineCreateInfo;
     pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineCreateInfo.pNext = &renderingCreateInfo;
     pipelineCreateInfo.flags = 0;
     pipelineCreateInfo.stageCount = 2;
-    pipelineCreateInfo.pStages = NULL;
+    pipelineCreateInfo.pStages = shaderStages;
     pipelineCreateInfo.pVertexInputState = &vertexInputState;
     pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
+    pipelineCreateInfo.pTessellationState = NULL;
     pipelineCreateInfo.pViewportState = &viewportState;
     pipelineCreateInfo.pRasterizationState = &rasterizationState;
     pipelineCreateInfo.pMultisampleState = &multisampleState;
     pipelineCreateInfo.pDepthStencilState = &depthStencilState;
-
-    vkCreateGraphicsPipelines(g.device, NULL, 1, &pipelineCreateInfo, NULL, (VkPipeline*)&pPipeline->pHandle);
+    pipelineCreateInfo.pColorBlendState = &colorBlendState;
+    pipelineCreateInfo.pDynamicState = &dynamicState;
+    pipelineCreateInfo.layout = g.pipelineLayout;
+    pipelineCreateInfo.renderPass = NULL;
+    vkCreateGraphicsPipelines(g.device, NULL, 1, &pipelineCreateInfo, NULL, (VkPipeline*)pPipeline);
 }
 
-void arDestroyPipeline(ArPipeline pipeline)
+void
+arDestroyPipeline(ArPipeline pipeline)
 {
-    vkDestroyPipeline(g.device, pipeline.pHandle, NULL);
+    vkDestroyPipeline(g.device, pipeline._data, NULL);
 }
 
-void arCmdBeginPresent(ArCommandBuffer cmd)
+void
+arCmdBeginPresent(ArCommandBuffer cmd)
 {
     VkImageMemoryBarrier2 imageMemoryBarrier;
     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     imageMemoryBarrier.pNext = NULL;
-    imageMemoryBarrier.image = ((SwapchainImage*)cmd.pHandle)->handle;
+    imageMemoryBarrier.image = ((ArFrame*)cmd._data)->image;
     imageMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
     imageMemoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
     imageMemoryBarrier.srcAccessMask = VK_ACCESS_2_NONE;
@@ -486,7 +682,7 @@ void arCmdBeginPresent(ArCommandBuffer cmd)
     dependencyInfo.memoryBarrierCount = 0;
     dependencyInfo.bufferMemoryBarrierCount = 0;
     dependencyInfo.pImageMemoryBarriers = &imageMemoryBarrier;
-    vkCmdPipelineBarrier2(((SwapchainImage*)cmd.pHandle)->cmd, &dependencyInfo);
+    vkCmdPipelineBarrier2(((ArFrame*)cmd._data)->cmd, &dependencyInfo);
 
     VkRenderingAttachmentInfo colorAttachmentInfo;
     colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -495,9 +691,13 @@ void arCmdBeginPresent(ArCommandBuffer cmd)
     colorAttachmentInfo.resolveImageView = NULL;
     colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colorAttachmentInfo.imageView = ((SwapchainImage*)cmd.pHandle)->view;
-    colorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachmentInfo.imageView = ((ArFrame*)cmd._data)->view;
+    colorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachmentInfo.clearValue.color.float32[0] = 0.1f;
+    colorAttachmentInfo.clearValue.color.float32[1] = 0.1f;
+    colorAttachmentInfo.clearValue.color.float32[2] = 0.1f;
+    colorAttachmentInfo.clearValue.color.float32[3] = 1.0f;
 
     VkRenderingInfo renderingInfo;
     renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
@@ -513,17 +713,34 @@ void arCmdBeginPresent(ArCommandBuffer cmd)
     renderingInfo.pColorAttachments = &colorAttachmentInfo;
     renderingInfo.pDepthAttachment = NULL;
     renderingInfo.pStencilAttachment = NULL;
-    vkCmdBeginRendering(((SwapchainImage*)cmd.pHandle)->cmd, &renderingInfo);
+    vkCmdBeginRendering(((ArFrame*)cmd._data)->cmd, &renderingInfo);
+
+    VkRect2D scissor;
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width  = g.extent.width;
+    scissor.extent.height = g.extent.height;
+    vkCmdSetScissor(((ArFrame*)cmd._data)->cmd, 0, 1, &scissor);
+
+    VkViewport viewport;
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width  = (float)g.extent.width;
+    viewport.height = (float)g.extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(((ArFrame*)cmd._data)->cmd, 0, 1, &viewport);
 }
 
-void arCmdEndPresent(ArCommandBuffer cmd)
+void
+arCmdEndPresent(ArCommandBuffer cmd)
 {
-    vkCmdEndRendering(((SwapchainImage*)cmd.pHandle)->cmd);
+    vkCmdEndRendering(((ArFrame*)cmd._data)->cmd);
 
     VkImageMemoryBarrier2 imageMemoryBarrier;
     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     imageMemoryBarrier.pNext = NULL;
-    imageMemoryBarrier.image = ((SwapchainImage*)cmd.pHandle)->handle;
+    imageMemoryBarrier.image = ((ArFrame*)cmd._data)->image;
     imageMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
     imageMemoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
     imageMemoryBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
@@ -546,5 +763,17 @@ void arCmdEndPresent(ArCommandBuffer cmd)
     dependencyInfo.memoryBarrierCount = 0;
     dependencyInfo.bufferMemoryBarrierCount = 0;
     dependencyInfo.pImageMemoryBarriers = &imageMemoryBarrier;
-    vkCmdPipelineBarrier2(((SwapchainImage*)cmd.pHandle)->cmd, &dependencyInfo);
+    vkCmdPipelineBarrier2(((ArFrame*)cmd._data)->cmd, &dependencyInfo);
+}
+
+void
+arCmdBindGraphicsPipeline(ArCommandBuffer cmd, ArPipeline pipeline)
+{
+    vkCmdBindPipeline(((ArFrame*)cmd._data)->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline._data);
+}
+
+void
+arCmdDraw(ArCommandBuffer cmd, uint32_t vertexCount, uint32_t instanceCount, uint32_t vertex, uint32_t instance)
+{
+    vkCmdDraw(((ArFrame*)cmd._data)->cmd, vertexCount, instanceCount, vertex, instance);
 }
