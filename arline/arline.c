@@ -7,6 +7,7 @@
 #define NOMINMAX
 #include <vulkan/vulkan.h>
 #include <dwmapi.h>
+#include <stdbool.h>
 
 typedef struct
 {
@@ -20,7 +21,7 @@ struct
 {
     void (*pfnUpdate)();
     void (*pfnResize)();
-    void (*pfnRecordCommands)(ArCommandBuffer);
+    void (*pfnRecordCommands)();
     HINSTANCE hinstance;
     HWND hwnd;
     VkInstance instance;
@@ -28,25 +29,26 @@ struct
     VkSurfaceKHR surface;
     VkCommandPool commandPool;
     VkPipelineLayout pipelineLayout;
+    ArFrame* pFrame;
     uint32_t imageIndex;
     uint32_t imageCount;
     VkDevice device;
     VkQueue queue;
     VkSwapchainKHR swapchain;
     VkFence fence;
-    VkSemaphoreSubmitInfo waitSemaphoreInfo;
     VkCommandBufferSubmitInfo commandBufferInfo;
-    VkSemaphoreSubmitInfo signalSemaphoreInfo;
+    VkSemaphoreSubmitInfo acqSemaphore;
+    VkSemaphoreSubmitInfo renSemaphore;
     VkSubmitInfo2 submitInfo;
     VkPresentInfoKHR presentInfo;
     ArFrame frames[6];
     VkExtent2D extent;
-    int width, height;
-    bool windowShouldClose;
+    int32_t width, height;
+    ArBool8 windowShouldClose;
 }
 global g;
 
-internal void arWindowCreate(int width, int height);
+internal void arWindowCreate(int32_t width, int32_t height);
 internal void arWindowTeardown(void);
 internal void arSwapchainCreate(void);
 internal void arSwapchainTeardown(void);
@@ -94,7 +96,7 @@ arWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 }
 
 internal void
-arWindowCreate(int width, int height)
+arWindowCreate(int32_t width, int32_t height)
 {
     g.hinstance = GetModuleHandleA(NULL);
 
@@ -163,7 +165,7 @@ arSwapchainCreate(void)
     swapchainCreateInfo.queueFamilyIndexCount = 0;
     swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    swapchainCreateInfo.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
     swapchainCreateInfo.clipped = true;
     swapchainCreateInfo.oldSwapchain = NULL;
     vkCreateSwapchainKHR(g.device, &swapchainCreateInfo, NULL, &g.swapchain);
@@ -216,16 +218,16 @@ arSwapchainCreate(void)
     g.submitInfo.pNext = NULL;
     g.submitInfo.flags = 0;
     g.submitInfo.waitSemaphoreInfoCount = 1;
-    g.submitInfo.pWaitSemaphoreInfos = &g.waitSemaphoreInfo;
+    g.submitInfo.pWaitSemaphoreInfos = &g.acqSemaphore;
     g.submitInfo.commandBufferInfoCount = 1;
     g.submitInfo.pCommandBufferInfos = &g.commandBufferInfo;
     g.submitInfo.signalSemaphoreInfoCount = 1;
-    g.submitInfo.pSignalSemaphoreInfos = &g.signalSemaphoreInfo;
+    g.submitInfo.pSignalSemaphoreInfos = &g.renSemaphore;
 
     g.presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     g.presentInfo.pNext = NULL;
     g.presentInfo.waitSemaphoreCount = 1;
-    g.presentInfo.pWaitSemaphores = &g.signalSemaphoreInfo.semaphore;
+    g.presentInfo.pWaitSemaphores = &g.renSemaphore.semaphore;
     g.presentInfo.swapchainCount = 1;
     g.presentInfo.pSwapchains = &g.swapchain;
     g.presentInfo.pImageIndices = &g.imageIndex;
@@ -337,9 +339,68 @@ arContextCreate(void)
         vulkan13Features.shaderIntegerDotProduct = false;
         vulkan13Features.maintenance4 = false;
 
+        VkPhysicalDeviceFeatures2 features;
+        features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features.pNext = &vulkan13Features;
+        features.features.robustBufferAccess = false;
+        features.features.fullDrawIndexUint32 = false;
+        features.features.imageCubeArray = false;
+        features.features.independentBlend = false;
+        features.features.geometryShader = false;
+        features.features.tessellationShader = false;
+        features.features.sampleRateShading = false;
+        features.features.dualSrcBlend = false;
+        features.features.logicOp = false;
+        features.features.multiDrawIndirect = false;
+        features.features.drawIndirectFirstInstance = false;
+        features.features.depthClamp = false;
+        features.features.depthBiasClamp = false;
+        features.features.fillModeNonSolid = true;
+        features.features.depthBounds = false;
+        features.features.wideLines = false;
+        features.features.largePoints = false;
+        features.features.alphaToOne = false;
+        features.features.multiViewport = false;
+        features.features.samplerAnisotropy = false;
+        features.features.textureCompressionETC2 = false;
+        features.features.textureCompressionASTC_LDR = false;
+        features.features.textureCompressionBC = false;
+        features.features.occlusionQueryPrecise = false;
+        features.features.pipelineStatisticsQuery = false;
+        features.features.vertexPipelineStoresAndAtomics = false;
+        features.features.fragmentStoresAndAtomics = false;
+        features.features.shaderTessellationAndGeometryPointSize = false;
+        features.features.shaderImageGatherExtended = false;
+        features.features.shaderStorageImageExtendedFormats = false;
+        features.features.shaderStorageImageMultisample = false;
+        features.features.shaderStorageImageReadWithoutFormat = false;
+        features.features.shaderStorageImageWriteWithoutFormat = false;
+        features.features.shaderUniformBufferArrayDynamicIndexing = false;
+        features.features.shaderSampledImageArrayDynamicIndexing = false;
+        features.features.shaderStorageBufferArrayDynamicIndexing = false;
+        features.features.shaderStorageImageArrayDynamicIndexing = false;
+        features.features.shaderClipDistance = false;
+        features.features.shaderCullDistance = false;
+        features.features.shaderFloat64 = false;
+        features.features.shaderInt64 = false;
+        features.features.shaderInt16 = false;
+        features.features.shaderResourceResidency = false;
+        features.features.shaderResourceMinLod = false;
+        features.features.sparseBinding = false;
+        features.features.sparseResidencyBuffer = false;
+        features.features.sparseResidencyImage2D = false;
+        features.features.sparseResidencyImage3D = false;
+        features.features.sparseResidency2Samples = false;
+        features.features.sparseResidency4Samples = false;
+        features.features.sparseResidency8Samples = false;
+        features.features.sparseResidency16Samples = false;
+        features.features.sparseResidencyAliased = false;
+        features.features.variableMultisampleRate = false;
+        features.features.inheritedQueries = false;
+
         VkDeviceCreateInfo deviceCreateInfo;
         deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        deviceCreateInfo.pNext = &vulkan13Features;
+        deviceCreateInfo.pNext = &features;
         deviceCreateInfo.flags = 0;
         deviceCreateInfo.queueCreateInfoCount = 1;
         deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
@@ -355,8 +416,8 @@ arContextCreate(void)
         semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         semaphoreCreateInfo.pNext = NULL;
         semaphoreCreateInfo.flags = 0;
-        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.waitSemaphoreInfo.semaphore);
-        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.signalSemaphoreInfo.semaphore);
+        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.acqSemaphore.semaphore);
+        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.renSemaphore.semaphore);
 
         VkFenceCreateInfo fenceCreateInfo;
         fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
@@ -365,21 +426,21 @@ arContextCreate(void)
         vkCreateFence(g.device, &fenceCreateInfo, NULL, &g.fence);
     }
     {
-        g.waitSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        g.waitSemaphoreInfo.pNext = NULL;
-        g.waitSemaphoreInfo.value = 0;
-        g.waitSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        g.waitSemaphoreInfo.deviceIndex = 0;
-
         g.commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
         g.commandBufferInfo.pNext = NULL;
         g.commandBufferInfo.deviceMask = 0;
 
-        g.signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        g.signalSemaphoreInfo.pNext = NULL;
-        g.signalSemaphoreInfo.value = 0;
-        g.signalSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        g.signalSemaphoreInfo.deviceIndex = 0;
+        g.acqSemaphore.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        g.acqSemaphore.pNext = NULL;
+        g.acqSemaphore.value = 0;
+        g.acqSemaphore.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        g.acqSemaphore.deviceIndex = 0;
+
+        g.renSemaphore.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        g.renSemaphore.pNext = NULL;
+        g.renSemaphore.value = 0;
+        g.renSemaphore.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        g.renSemaphore.deviceIndex = 0;
     }
     {
         VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
@@ -401,8 +462,8 @@ arContextTeardown(void)
     arSwapchainTeardown();
     vkDestroyPipelineLayout(g.device, g.pipelineLayout, NULL);
     vkDestroyFence(g.device, g.fence, NULL);
-    vkDestroySemaphore(g.device, g.signalSemaphoreInfo.semaphore, NULL);
-    vkDestroySemaphore(g.device, g.waitSemaphoreInfo.semaphore, NULL);
+    vkDestroySemaphore(g.device, g.renSemaphore.semaphore, NULL);
+    vkDestroySemaphore(g.device, g.acqSemaphore.semaphore, NULL);
     vkDestroyDevice(g.device, NULL);
     vkDestroySurfaceKHR(g.instance, g.surface, NULL);
     vkDestroyInstance(g.instance, NULL);
@@ -432,7 +493,7 @@ arExecute(ArApplicationInfo const* pApplicationInfo)
         vkWaitForFences(g.device, 1, &g.fence, 0, UINT64_MAX);
         vkResetFences(g.device, 1, &g.fence);
 
-        vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.waitSemaphoreInfo.semaphore, NULL, &g.imageIndex);
+        vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.acqSemaphore.semaphore, NULL, &g.imageIndex);
 
         g.commandBufferInfo.commandBuffer = g.frames[g.imageIndex].cmd;
         vkQueueSubmit2(g.queue, 1, &g.submitInfo, g.fence);
@@ -456,12 +517,11 @@ arRecordCommands(void)
         commandBufferBeginInfo.flags = 0;
         commandBufferBeginInfo.pInheritanceInfo = NULL;
 
-        ArCommandBuffer cmd;
-        cmd._data = &g.frames[i];
+        g.pFrame = &g.frames[i];
 
-        vkBeginCommandBuffer(((ArFrame*)cmd._data)->cmd, &commandBufferBeginInfo);
-        g.pfnRecordCommands(cmd);
-        vkEndCommandBuffer(((ArFrame*)cmd._data)->cmd);
+        vkBeginCommandBuffer(g.pFrame->cmd, &commandBufferBeginInfo);
+        g.pfnRecordCommands();
+        vkEndCommandBuffer(g.pFrame->cmd);
     }
 }
 
@@ -520,14 +580,35 @@ arDestroyShader(ArShader shader)
 void
 arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo const* pPipelineCreateInfo)
 {
-    VkFormat colorFormats[1];
+    VkPipelineColorBlendAttachmentState blendAttachments[8];
+
+    for (uint32_t i = pPipelineCreateInfo->blendAttachmentCount; i--; )
+    {
+        blendAttachments[i].blendEnable         = pPipelineCreateInfo->pBlendAttachments[i].blendEnable;
+        blendAttachments[i].srcColorBlendFactor = pPipelineCreateInfo->pBlendAttachments[i].srcColorFactor;
+        blendAttachments[i].dstColorBlendFactor = pPipelineCreateInfo->pBlendAttachments[i].dstColorFactor;
+        blendAttachments[i].colorBlendOp        = pPipelineCreateInfo->pBlendAttachments[i].colorBlendOp;
+        blendAttachments[i].srcAlphaBlendFactor = pPipelineCreateInfo->pBlendAttachments[i].srcAlphaFactor;
+        blendAttachments[i].dstAlphaBlendFactor = pPipelineCreateInfo->pBlendAttachments[i].dstAlphaFactor;
+        blendAttachments[i].alphaBlendOp        = pPipelineCreateInfo->pBlendAttachments[i].alphaBlendOp;
+        blendAttachments[i].colorWriteMask      = pPipelineCreateInfo->pBlendAttachments[i].colorWriteMask;
+    }
+
+    VkFormat colorFormats[8];
     colorFormats[0] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[1] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[2] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[3] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[4] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[5] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[6] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[7] = VK_FORMAT_B8G8R8A8_UNORM;
 
     VkPipelineRenderingCreateInfo renderingCreateInfo;
     renderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
     renderingCreateInfo.pNext = NULL;
     renderingCreateInfo.viewMask = 0;
-    renderingCreateInfo.colorAttachmentCount = 1;
+    renderingCreateInfo.colorAttachmentCount = pPipelineCreateInfo->blendAttachmentCount;
     renderingCreateInfo.pColorAttachmentFormats = colorFormats;
     renderingCreateInfo.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
     renderingCreateInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
@@ -561,7 +642,7 @@ arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo con
     inputAssemblyState.pNext = NULL;
     inputAssemblyState.flags = 0;
     inputAssemblyState.primitiveRestartEnable = false;
-    inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssemblyState.topology = pPipelineCreateInfo->topology;
 
     VkPipelineViewportStateCreateInfo viewportState;
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -578,8 +659,8 @@ arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo con
     rasterizationState.flags = 0;
     rasterizationState.depthClampEnable = false;
     rasterizationState.rasterizerDiscardEnable = false;
-    rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizationState.cullMode = VK_CULL_MODE_NONE;
+    rasterizationState.polygonMode = pPipelineCreateInfo->polygonMode;
+    rasterizationState.cullMode = pPipelineCreateInfo->cullMode;
     rasterizationState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizationState.depthBiasEnable = false;
     rasterizationState.lineWidth = 1.0f;
@@ -603,18 +684,30 @@ arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo con
     depthStencilState.depthBoundsTestEnable = false;
     depthStencilState.depthWriteEnable = false;
     depthStencilState.depthTestEnable = false;
-
-    VkPipelineColorBlendAttachmentState colorBlendAttachmentState;
-    colorBlendAttachmentState.blendEnable = false;
-    colorBlendAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    depthStencilState.depthCompareOp = VK_COMPARE_OP_NEVER;
+    depthStencilState.front.failOp = VK_STENCIL_OP_KEEP;
+    depthStencilState.front.passOp = VK_STENCIL_OP_KEEP;
+    depthStencilState.front.depthFailOp = VK_STENCIL_OP_KEEP;
+    depthStencilState.front.compareOp = VK_COMPARE_OP_NEVER;
+    depthStencilState.front.compareMask = 0;
+    depthStencilState.front.writeMask = 0;
+    depthStencilState.front.reference = 0;
+    depthStencilState.back.failOp = VK_STENCIL_OP_KEEP;
+    depthStencilState.back.passOp = VK_STENCIL_OP_KEEP;
+    depthStencilState.back.depthFailOp = VK_STENCIL_OP_KEEP;
+    depthStencilState.back.compareOp = VK_COMPARE_OP_NEVER;
+    depthStencilState.back.compareMask = 0;
+    depthStencilState.back.writeMask = 0;
+    depthStencilState.back.reference = 0;
 
     VkPipelineColorBlendStateCreateInfo colorBlendState;
     colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlendState.pNext = NULL;
     colorBlendState.flags = 0;
     colorBlendState.logicOpEnable = false;
-    colorBlendState.attachmentCount = 1;
-    colorBlendState.pAttachments = &colorBlendAttachmentState;
+    colorBlendState.logicOp = VK_LOGIC_OP_COPY;
+    colorBlendState.attachmentCount = pPipelineCreateInfo->blendAttachmentCount;
+    colorBlendState.pAttachments = blendAttachments;
 
     VkDynamicState dynamicStates[2];
     dynamicStates[0] = VK_DYNAMIC_STATE_VIEWPORT;
@@ -654,12 +747,12 @@ arDestroyPipeline(ArPipeline pipeline)
 }
 
 void
-arCmdBeginPresent(ArCommandBuffer cmd)
+arCmdBeginPresent()
 {
     VkImageMemoryBarrier2 imageMemoryBarrier;
     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     imageMemoryBarrier.pNext = NULL;
-    imageMemoryBarrier.image = ((ArFrame*)cmd._data)->image;
+    imageMemoryBarrier.image = g.pFrame->image;
     imageMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
     imageMemoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
     imageMemoryBarrier.srcAccessMask = VK_ACCESS_2_NONE;
@@ -677,12 +770,12 @@ arCmdBeginPresent(ArCommandBuffer cmd)
     VkDependencyInfo dependencyInfo;
     dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dependencyInfo.pNext = NULL;
-    dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    dependencyInfo.dependencyFlags = 0;
     dependencyInfo.imageMemoryBarrierCount = 1;
     dependencyInfo.memoryBarrierCount = 0;
     dependencyInfo.bufferMemoryBarrierCount = 0;
     dependencyInfo.pImageMemoryBarriers = &imageMemoryBarrier;
-    vkCmdPipelineBarrier2(((ArFrame*)cmd._data)->cmd, &dependencyInfo);
+    vkCmdPipelineBarrier2(g.pFrame->cmd, &dependencyInfo);
 
     VkRenderingAttachmentInfo colorAttachmentInfo;
     colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -691,13 +784,12 @@ arCmdBeginPresent(ArCommandBuffer cmd)
     colorAttachmentInfo.resolveImageView = NULL;
     colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colorAttachmentInfo.imageView = ((ArFrame*)cmd._data)->view;
+    colorAttachmentInfo.imageView = g.pFrame->view;
     colorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colorAttachmentInfo.clearValue.color.float32[0] = 0.1f;
-    colorAttachmentInfo.clearValue.color.float32[1] = 0.1f;
-    colorAttachmentInfo.clearValue.color.float32[2] = 0.1f;
-    colorAttachmentInfo.clearValue.color.float32[3] = 1.0f;
+    colorAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachmentInfo.clearValue.color.uint32[0] = 0x3d4ccccd;
+    colorAttachmentInfo.clearValue.color.uint32[1] = 0x3d4ccccd;
+    colorAttachmentInfo.clearValue.color.uint32[2] = 0x3d4ccccd;
 
     VkRenderingInfo renderingInfo;
     renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
@@ -713,14 +805,14 @@ arCmdBeginPresent(ArCommandBuffer cmd)
     renderingInfo.pColorAttachments = &colorAttachmentInfo;
     renderingInfo.pDepthAttachment = NULL;
     renderingInfo.pStencilAttachment = NULL;
-    vkCmdBeginRendering(((ArFrame*)cmd._data)->cmd, &renderingInfo);
+    vkCmdBeginRendering(g.pFrame->cmd, &renderingInfo);
 
     VkRect2D scissor;
     scissor.offset.x = 0;
     scissor.offset.y = 0;
     scissor.extent.width  = g.extent.width;
     scissor.extent.height = g.extent.height;
-    vkCmdSetScissor(((ArFrame*)cmd._data)->cmd, 0, 1, &scissor);
+    vkCmdSetScissor(g.pFrame->cmd, 0, 1, &scissor);
 
     VkViewport viewport;
     viewport.x = 0.0f;
@@ -729,18 +821,18 @@ arCmdBeginPresent(ArCommandBuffer cmd)
     viewport.height = (float)g.extent.height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(((ArFrame*)cmd._data)->cmd, 0, 1, &viewport);
+    vkCmdSetViewport(g.pFrame->cmd, 0, 1, &viewport);
 }
 
 void
-arCmdEndPresent(ArCommandBuffer cmd)
+arCmdEndPresent()
 {
-    vkCmdEndRendering(((ArFrame*)cmd._data)->cmd);
+    vkCmdEndRendering(g.pFrame->cmd);
 
     VkImageMemoryBarrier2 imageMemoryBarrier;
     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     imageMemoryBarrier.pNext = NULL;
-    imageMemoryBarrier.image = ((ArFrame*)cmd._data)->image;
+    imageMemoryBarrier.image = g.pFrame->image;
     imageMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
     imageMemoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
     imageMemoryBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
@@ -758,22 +850,22 @@ arCmdEndPresent(ArCommandBuffer cmd)
     VkDependencyInfo dependencyInfo;
     dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dependencyInfo.pNext = NULL;
-    dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    dependencyInfo.dependencyFlags = 0;
     dependencyInfo.imageMemoryBarrierCount = 1;
     dependencyInfo.memoryBarrierCount = 0;
     dependencyInfo.bufferMemoryBarrierCount = 0;
     dependencyInfo.pImageMemoryBarriers = &imageMemoryBarrier;
-    vkCmdPipelineBarrier2(((ArFrame*)cmd._data)->cmd, &dependencyInfo);
+    vkCmdPipelineBarrier2(g.pFrame->cmd, &dependencyInfo);
 }
 
 void
-arCmdBindGraphicsPipeline(ArCommandBuffer cmd, ArPipeline pipeline)
+arCmdBindGraphicsPipeline(ArPipeline pipeline)
 {
-    vkCmdBindPipeline(((ArFrame*)cmd._data)->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline._data);
+    vkCmdBindPipeline(g.pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline._data);
 }
 
 void
-arCmdDraw(ArCommandBuffer cmd, uint32_t vertexCount, uint32_t instanceCount, uint32_t vertex, uint32_t instance)
+arCmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t vertex, uint32_t instance)
 {
-    vkCmdDraw(((ArFrame*)cmd._data)->cmd, vertexCount, instanceCount, vertex, instance);
+    vkCmdDraw(g.pFrame->cmd, vertexCount, instanceCount, vertex, instance);
 }

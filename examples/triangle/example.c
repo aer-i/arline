@@ -8,11 +8,19 @@ static ArPipeline g_pipeline;
 static void
 init()
 {
+    ArBlendAttachment blend;
+    blend.blendEnable = AR_FALSE;
+    blend.colorWriteMask = AR_COLOR_COMPONENT_RGBA_BITS;
+
     ArGraphicsPipelineCreateInfo pipelineCreateInfo;
+    pipelineCreateInfo.blendAttachmentCount = 1;
+    pipelineCreateInfo.pBlendAttachments = &blend;
+    pipelineCreateInfo.polygonMode = AR_POLYGON_MODE_FILL;
+    pipelineCreateInfo.topology = AR_TOPOLOGY_TRIANGLE_STRIP;
+    pipelineCreateInfo.cullMode = AR_CULL_MODE_BACK;
+
     arCreateShaderFromFile(&pipelineCreateInfo.vertShader, "shaders/main.vert.spv");
     arCreateShaderFromFile(&pipelineCreateInfo.fragShader, "shaders/main.frag.spv");
-
-    pipelineCreateInfo;
     arCreateGraphicsPipeline(&g_pipeline, &pipelineCreateInfo);
 
     arDestroyShader(pipelineCreateInfo.fragShader);
@@ -35,14 +43,14 @@ static void
 resize() {}
 
 static void
-recordCommands(ArCommandBuffer cmd)
+recordCommands()
 {
-    arCmdBeginPresent(cmd);
+    arCmdBeginPresent();
 
-    arCmdBindGraphicsPipeline(cmd, g_pipeline);
-    arCmdDraw(cmd, 3, 1, 0, 0);
+    arCmdBindGraphicsPipeline(g_pipeline);
+    arCmdDraw(3, 1, 0, 0);
 
-    arCmdEndPresent(cmd);
+    arCmdEndPresent();
 }
 
 static int
@@ -56,7 +64,7 @@ main(void)
     applicationInfo.pfnRecordCommands = recordCommands;
     applicationInfo.width = 1280;
     applicationInfo.height = 720;
-    applicationInfo.enableVsync = true;
+    applicationInfo.enableVsync = AR_TRUE;
 
     arExecute(&applicationInfo);
     ExitProcess(0);
