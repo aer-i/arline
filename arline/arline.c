@@ -30,6 +30,8 @@ struct
     void (*pfnUpdate)();
     void (*pfnResize)();
     void (*pfnRecordCommands)();
+    LARGE_INTEGER timeOffset;
+    LARGE_INTEGER timeFrequency;
     HINSTANCE hinstance;
     HWND hwnd;
     VkInstance instance;
@@ -42,7 +44,10 @@ struct
     VkDescriptorPool descriptorPool;
     VkDescriptorSetLayout descriptorSetLayout;
     VkDescriptorSet descriptorSet;
-    VkSampler sampler;
+    VkSampler samplerLinearToEdge;
+    VkSampler samplerLinearRepeat;
+    VkSampler samplerNearestToEdge;
+    VkSampler samplerNearestRepeat;
     ArFrame* pFrame;
     uint32_t imageIndex;
     uint32_t imageCount;
@@ -170,6 +175,8 @@ arWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 internal void
 arWindowCreate(int32_t width, int32_t height)
 {
+    QueryPerformanceFrequency(&g.timeFrequency);
+    QueryPerformanceCounter(&g.timeOffset);
     g.hinstance = GetModuleHandleA(NULL);
 
     WNDCLASSEXA wc;
@@ -631,9 +638,9 @@ arContextCreate(void)
         samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         samplerCreateInfo.pNext = NULL;
         samplerCreateInfo.flags = 0;
-        samplerCreateInfo.magFilter = VK_FILTER_NEAREST;
-        samplerCreateInfo.minFilter = VK_FILTER_NEAREST;
-        samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+        samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+        samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
         samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -645,7 +652,22 @@ arContextCreate(void)
         samplerCreateInfo.minLod = 0.0f;
         samplerCreateInfo.maxLod = VK_LOD_CLAMP_NONE;
         samplerCreateInfo.unnormalizedCoordinates = false;
-        vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.sampler);
+        vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerLinearToEdge);
+
+        samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerLinearRepeat);
+
+        samplerCreateInfo.magFilter = VK_FILTER_NEAREST;
+        samplerCreateInfo.minFilter = VK_FILTER_NEAREST;
+        samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerNearestRepeat);
+
+        samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerNearestToEdge);
     }
     {
         arSwapchainCreate();
@@ -674,7 +696,10 @@ arContextTeardown(void)
 {
     arSwapchainTeardown();
     vkDestroyPipelineLayout(g.device, g.pipelineLayout, NULL);
-    vkDestroySampler(g.device, g.sampler, NULL);
+    vkDestroySampler(g.device, g.samplerNearestRepeat, NULL);
+    vkDestroySampler(g.device, g.samplerNearestToEdge, NULL);
+    vkDestroySampler(g.device, g.samplerLinearRepeat, NULL);
+    vkDestroySampler(g.device, g.samplerLinearToEdge, NULL);
     vkDestroyDescriptorSetLayout(g.device, g.descriptorSetLayout, NULL);
     vkDestroyDescriptorPool(g.device, g.descriptorPool, NULL);
     vkDestroyFence(g.device, g.fence, NULL);
@@ -867,24 +892,68 @@ arDestroyBuffer(ArBuffer* pBuffer)
 void
 arCreateImage(ArImage* pImage, ArImageCreateInfo const* pImageCreateInfo)
 {
-    pImage->width  = pImageCreateInfo->width;
-    pImage->height = pImageCreateInfo->height;
-    pImage->depth  = pImageCreateInfo->depth;
+    VkImageAspectFlags aspect = 0;
+    VkImageUsageFlags usage = 0;
+    VkFormat format = 0;
+
+    switch (pImageCreateInfo->usage)
+    {
+    case AR_IMAGE_USAGE_COLOR_ATTACHMENT:
+        usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        format = VK_FORMAT_B8G8R8A8_UNORM;
+        break;
+    case AR_IMAGE_USAGE_DEPTH_ATTACHMENT:
+        usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        format = VK_FORMAT_D32_SFLOAT;
+        break;
+    case AR_IMAGE_USAGE_TEXTURE:
+        usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        format = VK_FORMAT_B8G8R8A8_UNORM;
+        break;
+    }
+
+    if (pImageCreateInfo->sampler)
+    {
+        usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    }
+
+    if (!pImageCreateInfo->depth)
+    {
+        pImage->depth = 1;
+    }
+    else
+    {
+        pImage->depth = pImageCreateInfo->depth;
+    }
+
+    if (pImageCreateInfo->width && pImageCreateInfo->height)
+    {
+        pImage->width  = pImageCreateInfo->width;
+        pImage->height = pImageCreateInfo->height;
+    }
+    else
+    {
+        pImage->width  = g.extent.width;
+        pImage->height = g.extent.height;
+    }
 
     VkImageCreateInfo imageCreateInfo;
     imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageCreateInfo.pNext = NULL;
     imageCreateInfo.flags = 0;
-    imageCreateInfo.imageType = pImageCreateInfo->type;
-    imageCreateInfo.format = pImageCreateInfo->format;
-    imageCreateInfo.extent.width = pImageCreateInfo->width;
-    imageCreateInfo.extent.height = pImageCreateInfo->height;
-    imageCreateInfo.extent.depth = pImageCreateInfo->depth;
+    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageCreateInfo.format = format;
+    imageCreateInfo.extent.width = pImage->width;
+    imageCreateInfo.extent.height = pImage->height;
+    imageCreateInfo.extent.depth = pImage->depth;
     imageCreateInfo.mipLevels = 1;
     imageCreateInfo.arrayLayers = 1;
     imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageCreateInfo.usage = pImageCreateInfo->usage;
+    imageCreateInfo.usage = usage;
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     imageCreateInfo.queueFamilyIndexCount = 0;
     imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -916,41 +985,56 @@ arCreateImage(ArImage* pImage, ArImageCreateInfo const* pImageCreateInfo)
     imageViewCreateInfo.pNext = NULL;
     imageViewCreateInfo.flags = 0;
     imageViewCreateInfo.image = pImage->handle.data[0];
-    imageViewCreateInfo.viewType = pImageCreateInfo->type;
-    imageViewCreateInfo.format = imageCreateInfo.format;
-    imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-    imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageViewCreateInfo.format = format;
+    imageViewCreateInfo.subresourceRange.aspectMask = aspect;
     imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
     imageViewCreateInfo.subresourceRange.levelCount = 1;
     imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
     imageViewCreateInfo.subresourceRange.layerCount = 1;
+
+    if (pImageCreateInfo->usage != AR_IMAGE_USAGE_TEXTURE)
+    {
+        imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+    }
+    else
+    {
+        imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_B;
+        imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
+        imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_R;
+        imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
+    }
+
     vkCreateImageView(g.device, &imageViewCreateInfo, NULL, (VkImageView*)&pImage->handle.data[2]);
+
+    if (pImageCreateInfo->sampler)
+    {
+        VkDescriptorImageInfo descriptorImageInfo;
+        descriptorImageInfo.sampler = (&g.samplerLinearToEdge)[pImageCreateInfo->sampler - 1];
+        descriptorImageInfo.imageView = pImage->handle.data[2];
+        descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        VkWriteDescriptorSet descriptorWrite;
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.pNext = NULL;
+        descriptorWrite.dstSet = g.descriptorSet;
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = pImageCreateInfo->dstArrayElement;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.pImageInfo = &descriptorImageInfo;
+        descriptorWrite.pBufferInfo = NULL;
+        descriptorWrite.pTexelBufferView = NULL;
+        vkUpdateDescriptorSets(g.device, 1, &descriptorWrite, 0, NULL);
+    }
 }
 
 void
-arWriteImage(ArImage* pImage, uint32_t dstArrayElement, size_t size, void const* pData)
+arUpdateImage(ArImage* pImage, size_t size, void const* pData)
 {
-    VkDescriptorImageInfo descriptorImageInfo;
-    descriptorImageInfo.sampler = g.sampler;
-    descriptorImageInfo.imageView = pImage->handle.data[2];
-    descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    VkWriteDescriptorSet descriptorWrite;
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.pNext = NULL;
-    descriptorWrite.dstSet = g.descriptorSet;
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = dstArrayElement;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptorWrite.pImageInfo = &descriptorImageInfo;
-    descriptorWrite.pBufferInfo = NULL;
-    descriptorWrite.pTexelBufferView = NULL;
-    vkUpdateDescriptorSets(g.device, 1, &descriptorWrite, 0, NULL);
-
     ArBuffer stagingBuffer;
     arCreateDynamicBuffer(&stagingBuffer, size);
     memcpy(stagingBuffer.pMapped, pData, size);
@@ -1060,8 +1144,17 @@ arDestroyShader(ArShader* pShader)
 void
 arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo const* pPipelineCreateInfo)
 {
-    VkPipelineColorBlendAttachmentState blendAttachments[8];
+    VkFormat colorFormats[8];
+    colorFormats[0] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[1] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[2] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[3] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[4] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[5] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[6] = VK_FORMAT_B8G8R8A8_UNORM;
+    colorFormats[7] = VK_FORMAT_B8G8R8A8_UNORM;
 
+    VkPipelineColorBlendAttachmentState blendAttachments[8];
     for (uint32_t i = pPipelineCreateInfo->blendAttachmentCount; i--; )
     {
         blendAttachments[i].blendEnable         = pPipelineCreateInfo->pBlendAttachments[i].blendEnable;
@@ -1073,16 +1166,6 @@ arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo con
         blendAttachments[i].alphaBlendOp        = pPipelineCreateInfo->pBlendAttachments[i].alphaBlendOp;
         blendAttachments[i].colorWriteMask      = pPipelineCreateInfo->pBlendAttachments[i].colorWriteMask;
     }
-
-    VkFormat colorFormats[8];
-    colorFormats[0] = VK_FORMAT_B8G8R8A8_UNORM;
-    colorFormats[1] = VK_FORMAT_B8G8R8A8_UNORM;
-    colorFormats[2] = VK_FORMAT_B8G8R8A8_UNORM;
-    colorFormats[3] = VK_FORMAT_B8G8R8A8_UNORM;
-    colorFormats[4] = VK_FORMAT_B8G8R8A8_UNORM;
-    colorFormats[5] = VK_FORMAT_B8G8R8A8_UNORM;
-    colorFormats[6] = VK_FORMAT_B8G8R8A8_UNORM;
-    colorFormats[7] = VK_FORMAT_B8G8R8A8_UNORM;
 
     VkPipelineRenderingCreateInfo renderingCreateInfo;
     renderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
@@ -1162,9 +1245,9 @@ arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo con
     depthStencilState.flags = 0;
     depthStencilState.stencilTestEnable = false;
     depthStencilState.depthBoundsTestEnable = false;
-    depthStencilState.depthWriteEnable = false;
-    depthStencilState.depthTestEnable = false;
-    depthStencilState.depthCompareOp = VK_COMPARE_OP_NEVER;
+    depthStencilState.depthWriteEnable = pPipelineCreateInfo->depthState.depthWriteEnable;
+    depthStencilState.depthTestEnable = pPipelineCreateInfo->depthState.depthTestEnable;
+    depthStencilState.depthCompareOp = pPipelineCreateInfo->depthState.compareOp;
     depthStencilState.front.failOp = VK_STENCIL_OP_KEEP;
     depthStencilState.front.passOp = VK_STENCIL_OP_KEEP;
     depthStencilState.front.depthFailOp = VK_STENCIL_OP_KEEP;
@@ -1308,7 +1391,6 @@ arCmdBeginPresent()
 void
 arCmdEndPresent()
 {
-
     VkImageMemoryBarrier2 imageMemoryBarrier;
     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     imageMemoryBarrier.pNext = NULL;
@@ -1340,6 +1422,86 @@ arCmdEndPresent()
 }
 
 void
+arCmdBeginRendering(uint32_t colorAttachmentCount, ArAttachment const* pColorAttachments, ArAttachment const* pDepthAttachment)
+{
+    VkRenderingAttachmentInfo attachments[9];
+
+    if (pDepthAttachment)
+    {
+        attachments[8].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        attachments[8].pNext = NULL;
+        attachments[8].imageView = pDepthAttachment->pImage->handle.data[2];
+        attachments[8].imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        attachments[8].resolveMode = VK_RESOLVE_MODE_NONE;
+        attachments[8].resolveImageView = NULL;
+        attachments[8].resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        attachments[8].loadOp = pDepthAttachment->loadOp;
+        attachments[8].storeOp = pDepthAttachment->storeOp;
+        attachments[8].clearValue.depthStencil.depth = pDepthAttachment->clearValue.depth;
+        attachments[8].clearValue.depthStencil.stencil = 0;
+    }
+
+    for (uint32_t i = 0; i < colorAttachmentCount; ++i)
+    {
+        attachments[i].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        attachments[i].pNext = NULL;
+        attachments[i].imageView = pColorAttachments[i].pImage->handle.data[2];
+        attachments[i].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        attachments[i].resolveMode = VK_RESOLVE_MODE_NONE;
+        attachments[i].resolveImageView = NULL;
+        attachments[i].resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        attachments[i].loadOp = pColorAttachments[i].loadOp;
+        attachments[i].storeOp = pColorAttachments[i].storeOp;
+        attachments[i].clearValue.color.int32[0] = pColorAttachments[i].clearValue.color.int32[0];
+        attachments[i].clearValue.color.int32[1] = pColorAttachments[i].clearValue.color.int32[1];
+        attachments[i].clearValue.color.int32[2] = pColorAttachments[i].clearValue.color.int32[2];
+        attachments[i].clearValue.color.int32[3] = pColorAttachments[i].clearValue.color.int32[3];
+    }
+
+    VkExtent2D extent;
+    extent.width  = pColorAttachments->pImage->width;
+    extent.height = pColorAttachments->pImage->height;
+
+    VkRenderingInfo renderingInfo;
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderingInfo.pNext = NULL;
+    renderingInfo.flags = 0;
+    renderingInfo.renderArea.offset.x = 0;
+    renderingInfo.renderArea.offset.y = 0;
+    renderingInfo.renderArea.extent.width  = extent.width;
+    renderingInfo.renderArea.extent.height = extent.height;
+    renderingInfo.layerCount = 1;
+    renderingInfo.viewMask = 0;
+    renderingInfo.colorAttachmentCount = colorAttachmentCount;
+    renderingInfo.pColorAttachments = attachments;
+    renderingInfo.pDepthAttachment = pDepthAttachment ? &attachments[8] : NULL;
+    renderingInfo.pStencilAttachment = NULL;
+    vkCmdBeginRendering(g.pFrame->cmd, &renderingInfo);
+
+    VkRect2D scissor;
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width  = extent.width;
+    scissor.extent.height = extent.height;
+    vkCmdSetScissor(g.pFrame->cmd, 0, 1, &scissor);
+
+    VkViewport viewport;
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width  = (float)extent.width;
+    viewport.height = (float)extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(g.pFrame->cmd, 0, 1, &viewport);
+}
+
+void
+arCmdEndRendering(void)
+{
+    vkCmdEndRendering(g.pFrame->cmd);
+}
+
+void
 arCmdPushConstants(uint32_t offset, uint32_t size, void const* pValues)
 {
     vkCmdPushConstants(g.pFrame->cmd, g.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT |
@@ -1358,7 +1520,7 @@ arCmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t vertex, uint32_
     vkCmdDraw(g.pFrame->cmd, vertexCount, instanceCount, vertex, instance);
 }
 
-void arExecute(ArApplicationInfo const *pApplicationInfo)
+void arExecute(ArApplicationInfo const* pApplicationInfo)
 {
     g.pfnUpdate = pApplicationInfo->pfnUpdate;
     g.pfnResize = pApplicationInfo->pfnResize;
@@ -1382,6 +1544,15 @@ void arExecute(ArApplicationInfo const *pApplicationInfo)
         vkResetFences(g.device, 1, &g.fence);
 
         vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.acqSemaphore.semaphore, NULL, &g.imageIndex);
+
+        switch (pApplicationInfo->pfnUpdateResources())
+        {
+        case AR_REQUEST_NONE: break;
+        case AR_REQUEST_RECORD_COMMANDS:
+        case AR_REQUEST_VSYNC_DISABLE:
+        case AR_REQUEST_VSYNC_ENABLE:
+            break; // TODO))
+        }
 
         g.commandBufferInfo.commandBuffer = g.frames[g.imageIndex].cmd;
         vkQueueSubmit2(g.queue, 1, &g.submitInfo, g.fence);
@@ -1452,4 +1623,55 @@ ArBool8
 arIsButtonReleased(ArButton button)
 {
     return(g.buttons[button].isReleased);
+}
+
+double
+arGetTime()
+{
+    LARGE_INTEGER value;
+    QueryPerformanceCounter(&value);
+
+    return (double)(value.QuadPart - g.timeOffset.QuadPart) / g.timeFrequency.QuadPart;
+}
+
+float
+arGetTimef()
+{
+    return (float)arGetTime();
+}
+
+uint32_t
+arGetWindowWidth()
+{
+    return (uint32_t)g.width;
+}
+
+uint32_t
+arGetWindowHeight()
+{
+    return (uint32_t)g.height;
+}
+
+uint32_t
+arGetRenderWidth()
+{
+    return g.extent.width;
+}
+
+uint32_t
+arGetRenderHeight()
+{
+    return g.extent.height;
+}
+
+float
+arGetWindowAspectRatio()
+{
+    return g.width / (float)g.height;
+}
+
+float
+arGetRenderAspectRatio()
+{
+    return g.extent.width / (float)g.extent.height;
 }

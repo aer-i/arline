@@ -107,8 +107,8 @@ typedef unsigned char ArButton;
 #define AR_BUTTON_FORWARD                   0x04
 
 typedef unsigned char ArBool8;
-#define AR_TRUE 1
-#define AR_FALSE 0
+#define AR_FALSE                            0x00
+#define AR_TRUE                             0x01
 
 typedef unsigned char ArBlendOp;
 #define AR_BLEND_OP_ADD                     0x00
@@ -140,46 +140,6 @@ typedef unsigned char ArColorComponentFlags;
 typedef unsigned char ArFrontFace;
 #define AR_FRONT_FACE_COUNTER_CLOCKWISE     0x00
 #define AR_FRONT_FACE_CLOCKWISE             0x01
-
-typedef unsigned char ArFormat;
-#define AR_FORMAT_R8_UNORM                  0x09
-#define AR_FORMAT_R8_SNORM                  0x0a
-#define AR_FORMAT_R8_UINT                   0x0d
-#define AR_FORMAT_R8_SINT                   0x0e
-#define AR_FORMAT_RG8_UNORM                 0x10
-#define AR_FORMAT_RG8_SNORM                 0x11
-#define AR_FORMAT_RG8_UINT                  0x14
-#define AR_FORMAT_RG8_SINT                  0x15
-#define AR_FORMAT_RGBA8_UNORM               0x25
-#define AR_FORMAT_RGBA8_SNORM               0x26
-#define AR_FORMAT_RGBA8_UINT                0x29
-#define AR_FORMAT_RGBA8_SINT                0x2a
-#define AR_FORMAT_R16_UNORM                 0x46
-#define AR_FORMAT_R16_SNORM                 0x47
-#define AR_FORMAT_R16_UINT                  0x4a
-#define AR_FORMAT_R16_SINT                  0x4b
-#define AR_FORMAT_R16_SFLOAT                0x4c
-#define AR_FORMAT_RG16_UNORM                0x4d
-#define AR_FORMAT_RG16_SNORM                0x4e
-#define AR_FORMAT_RG16_UINT                 0x51
-#define AR_FORMAT_RG16_SINT                 0x52
-#define AR_FORMAT_RG16_SFLOAT               0x53
-#define AR_FORMAT_RGBA16_UNORM              0x5b
-#define AR_FORMAT_RGBA16_SNORM              0x5c
-#define AR_FORMAT_RGBA16_UINT               0x5f
-#define AR_FORMAT_RGBA16_SINT               0x60
-#define AR_FORMAT_RGBA16_SFLOAT             0x61
-#define AR_FORMAT_R32_UINT                  0x62
-#define AR_FORMAT_R32_SINT                  0x63
-#define AR_FORMAT_R32_SFLOAT                0x64
-#define AR_FORMAT_RG32_UINT                 0x65
-#define AR_FORMAT_RG32_SINT                 0x66
-#define AR_FORMAT_RG32_SFLOAT               0x67
-#define AR_FORMAT_RGBA32_UINT               0x6b
-#define AR_FORMAT_RGBA32_SINT               0x6c
-#define AR_FORMAT_RGBA32_SFLOAT             0x6d
-#define AR_FORMAT_D16_UNORM                 0x7c
-#define AR_FORMAT_D32_SFLOAT                0x7e
 
 typedef unsigned char ArShaderStage;
 #define AR_SHADER_STAGE_VERTEX              0x01
@@ -214,21 +174,25 @@ typedef unsigned char ArStoreOp;
 #define AR_STORE_OP_STORE                   0x00
 #define AR_STORE_OP_DONT_CARE               0x01
 
-typedef unsigned char ArImageType;
-#define AR_IMAGE_TYPE_1D                    0x00
-#define AR_IMAGE_TYPE_2D                    0x01
-#define AR_IMAGE_TYPE_3D                    0x03
-
-typedef unsigned char ArImageUsageFlags;
-#define AR_IMAGE_USAGE_SAMPLED_BIT          0x07
-#define AR_IMAGE_USAGE_COLOR_ATTACH_BIT     0x10
-#define AR_IMAGE_USAGE_DEPTH_ATTACH_BIT     0x20
+typedef unsigned char ArImageUsage;
+#define AR_IMAGE_USAGE_COLOR_ATTACHMENT     0x00
+#define AR_IMAGE_USAGE_DEPTH_ATTACHMENT     0x02
+#define AR_IMAGE_USAGE_TEXTURE              0x04
 
 typedef unsigned char ArImageLayout;
-#define AR_IMAGE_LAYOUT_COLOR_ATTACH        0x02
-#define AR_IMAGE_LAYOUT_DEPTH_ATTACH        0x03
+#define AR_IMAGE_LAYOUT_COLOR_ATTACHMENT    0x02
+#define AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT    0x03
 #define AR_IMAGE_LAYOUT_DEPTH_READ          0x04
 #define AR_IMAGE_LAYOUT_SHADER_READ         0x05
+#define AR_IMAGE_LAYOUT_TRANSFER_SRC        0x06
+#define AR_IMAGE_LAYOUT_TRANSFER_DST        0x07
+
+typedef unsigned char ArSampler;
+#define AR_SAMPLER_NONE                     0x00
+#define AR_SAMPLER_LINEAR_TO_EDGE           0x01
+#define AR_SAMPLER_LINEAR_REPEAT            0x02
+#define AR_SAMPLER_NEAREST_TO_EDGE          0x03
+#define AR_SAMPLER_NEAREST_REPEAT           0x04
 
 typedef unsigned char ArCompareOp;
 #define AR_COMPARE_OP_NEVER                 0x00
@@ -251,12 +215,27 @@ typedef struct { void* data[2]; } ArBufferHandle;
 typedef struct { void* data;    } ArShaderHandle;
 typedef struct { void* data;    } ArPipelineHandle;
 
+typedef union ArClearColor
+{
+    float float32[4];
+    uint32_t uint32[4];
+    int32_t int32[4];
+}
+ArClearColor;
+
+typedef union ArClearValue
+{
+    ArClearColor color;
+    float depth;
+}
+ArClearValue;
+
 typedef struct ArBuffer
 {
     ArBufferHandle handle;
-    void* pMapped;
     uint64_t address;
     uint64_t size;
+    void* pMapped;
 }
 ArBuffer;
 
@@ -287,12 +266,22 @@ typedef struct ArApplicationInfo
     void (*pfnInit)();
     void (*pfnTeardown)();
     void (*pfnUpdate)();
+    ArRequest (*pfnUpdateResources)();
     void (*pfnResize)();
     void (*pfnRecordCommands)();
     int32_t width, height;
     ArBool8 enableVsync;
 }
 ArApplicationInfo;
+
+typedef struct ArAttachment
+{
+    ArImage const* pImage;
+    ArLoadOp loadOp;
+    ArStoreOp storeOp;
+    ArClearValue clearValue;
+}
+ArAttachment;
 
 typedef struct ArBlendAttachment
 {
@@ -307,11 +296,19 @@ typedef struct ArBlendAttachment
 }
 ArBlendAttachment;
 
+typedef struct ArDepthState
+{
+    ArBool8 depthTestEnable;
+    ArBool8 depthWriteEnable;
+    ArCompareOp compareOp;
+}
+ArDepthState;
+
 typedef struct ArImageCreateInfo
 {
-    ArImageUsageFlags usage;
-    ArImageType type;
-    ArFormat format;
+    ArImageUsage usage;
+    ArSampler sampler;
+    uint32_t dstArrayElement;
     uint32_t width;
     uint32_t height;
     uint32_t depth;
@@ -322,6 +319,7 @@ typedef struct ArGraphicsPipelineCreateInfo
 {
     uint32_t blendAttachmentCount;
     ArBlendAttachment const* pBlendAttachments;
+    ArDepthState depthState;
     ArShader vertShader;
     ArShader fragShader;
     ArPolygonMode polygonMode;
@@ -342,6 +340,17 @@ ArBool8 arIsButtonDown(ArButton button);
 ArBool8 arIsButtonPressed(ArButton button);
 ArBool8 arIsButtonReleased(ArButton button);
 
+double arGetTime();
+float  arGetTimef();
+
+uint32_t arGetWindowWidth();
+uint32_t arGetWindowHeight();
+uint32_t arGetRenderWidth();
+uint32_t arGetRenderHeight();
+
+float arGetWindowAspectRatio();
+float arGetRenderAspectRatio();
+
 void arExecute(ArApplicationInfo const* pApplicationInfo);
 void arPollEvents(void);
 void arWaitEvents(void);
@@ -349,7 +358,7 @@ void arCreateDynamicBuffer(ArBuffer* pBuffer, uint64_t capacity);
 void arCreateStaticBuffer(ArBuffer* pBuffer, uint64_t size, void const* pData);
 void arDestroyBuffer(ArBuffer* pBuffer);
 void arCreateImage(ArImage* pImage, ArImageCreateInfo const* pImageCreateInfo);
-void arWriteImage(ArImage* pImage, uint32_t dstArrayElement, size_t size, void const* pData);
+void arUpdateImage(ArImage* pImage, size_t size, void const* pData);
 void arDestroyImage(ArImage* pImage);
 void arCreateShaderFromFile(ArShader* pShader, char const* filename);
 void arCreateShaderFromMemory(ArShader* pShader, uint32_t const* pCode, size_t codeSize);
@@ -358,6 +367,8 @@ void arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInf
 void arDestroyPipeline(ArPipeline* pPipeline);
 void arCmdBeginPresent(void);
 void arCmdEndPresent(void);
+void arCmdBeginRendering(uint32_t colorAttachmentCount, ArAttachment const* pColorAttachments, ArAttachment const* pDepthAttachment);
+void arCmdEndRendering(void);
 void arCmdPushConstants(uint32_t offset, uint32_t size, void const* pValues);
 void arCmdBindGraphicsPipeline(ArPipeline const* pPipeline);
 void arCmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t vertex, uint32_t instance);

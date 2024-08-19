@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.26)
 
 find_package(Vulkan REQUIRED)
 
-project(arline C)
+project(arline)
 option(AR_BUILD_EXAMPLES "Build arline examples" ON)
 
 add_library(arline)

@@ -19,15 +19,15 @@ init()
     };
 
     ArImageCreateInfo imageCreateInfo;
-    imageCreateInfo.usage = AR_IMAGE_USAGE_SAMPLED_BIT;
-    imageCreateInfo.type = AR_IMAGE_TYPE_2D;
-    imageCreateInfo.format = AR_FORMAT_RGBA8_UNORM;
+    imageCreateInfo.usage = AR_IMAGE_USAGE_TEXTURE;
+    imageCreateInfo.sampler = AR_SAMPLER_NEAREST_TO_EDGE;
+    imageCreateInfo.dstArrayElement = 0;
     imageCreateInfo.width = 3;
     imageCreateInfo.height = 3;
     imageCreateInfo.depth = 1;
 
     arCreateImage(&g.texture, &imageCreateInfo);
-    arWriteImage(&g.texture, 0, sizeof(rawPixels), rawPixels);
+    arUpdateImage(&g.texture, sizeof(rawPixels), rawPixels);
 
     const float vertices[] = {
         /* positions */-0.5f, -0.5f, /* UVs */ 0.0f, 0.0f,
@@ -44,6 +44,9 @@ init()
     ArGraphicsPipelineCreateInfo pipelineCreateInfo;
     pipelineCreateInfo.blendAttachmentCount = 1;
     pipelineCreateInfo.pBlendAttachments = &blend;
+    pipelineCreateInfo.depthState.depthTestEnable = AR_FALSE;
+    pipelineCreateInfo.depthState.depthWriteEnable = AR_FALSE;
+    pipelineCreateInfo.depthState.compareOp = AR_COMPARE_OP_NEVER;
     pipelineCreateInfo.polygonMode = AR_POLYGON_MODE_FILL;
     pipelineCreateInfo.topology = AR_TOPOLOGY_TRIANGLE_STRIP;
     pipelineCreateInfo.cullMode = AR_CULL_MODE_FRONT;
@@ -71,6 +74,12 @@ update()
     arPollEvents();
 }
 
+static ArRequest
+updateResources()
+{
+    return AR_REQUEST_NONE;
+}
+
 static void
 resize() {}
 
@@ -93,6 +102,7 @@ main(void)
     applicationInfo.pfnInit = init;
     applicationInfo.pfnTeardown = teardown;
     applicationInfo.pfnUpdate = update;
+    applicationInfo.pfnUpdateResources = updateResources;
     applicationInfo.pfnResize = resize;
     applicationInfo.pfnRecordCommands = recordCommands;
     applicationInfo.width = 1280;
@@ -106,7 +116,8 @@ main(void)
 int _fltused;
 
 #pragma function(memset)
-void* memset(void* dest, int c, size_t size)
+void*
+memset(void* dest, int c, size_t size)
 {
     byte* bytes = (byte*)dest;
 
