@@ -180,9 +180,9 @@ typedef unsigned char ArImageUsage;
 #define AR_IMAGE_USAGE_TEXTURE              0x04
 
 typedef unsigned char ArImageLayout;
+#define AR_IMAGE_LAYOUT_UNDEFINED           0x00
 #define AR_IMAGE_LAYOUT_COLOR_ATTACHMENT    0x02
 #define AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT    0x03
-#define AR_IMAGE_LAYOUT_DEPTH_READ          0x04
 #define AR_IMAGE_LAYOUT_SHADER_READ         0x05
 #define AR_IMAGE_LAYOUT_TRANSFER_SRC        0x06
 #define AR_IMAGE_LAYOUT_TRANSFER_DST        0x07
@@ -204,141 +204,150 @@ typedef unsigned char ArCompareOp;
 #define AR_COMPARE_OP_GEQUAL                0x06
 #define AR_COMPARE_OP_ALWAYS                0x07
 
+typedef unsigned char ArIndexType;
+#define AR_INDEX_TYPE_UINT16                0x00
+#define AR_INDEX_TYPE_UINT32                0x01
+
 typedef unsigned char ArRequest;
 #define AR_REQUEST_NONE                     0x00
 #define AR_REQUEST_RECORD_COMMANDS          0x01
 #define AR_REQUEST_VSYNC_ENABLE             0x02
 #define AR_REQUEST_VSYNC_DISABLE            0x03
 
-typedef struct { void* data[3]; } ArImageHandle;
-typedef struct { void* data[2]; } ArBufferHandle;
-typedef struct { void* data;    } ArShaderHandle;
-typedef struct { void* data;    } ArPipelineHandle;
+typedef struct ArImageHandle    { void* data[3]; } ArImageHandle;
+typedef struct ArBufferHandle   { void* data[2]; } ArBufferHandle;
+typedef struct ArShaderHandle   { void* data;    } ArShaderHandle;
+typedef struct ArPipelineHandle { void* data;    } ArPipelineHandle;
 
 typedef union ArClearColor
 {
-    float float32[4];
-    uint32_t uint32[4];
-    int32_t int32[4];
-}
-ArClearColor;
+    float                       float32[4];
+    uint32_t                    uint32[4];
+    int32_t                     int32[4];
+} ArClearColor;
 
 typedef union ArClearValue
 {
-    ArClearColor color;
-    float depth;
-}
-ArClearValue;
+    ArClearColor                color;
+    float                       depth;
+} ArClearValue;
 
 typedef struct ArBuffer
 {
-    ArBufferHandle handle;
-    uint64_t address;
-    uint64_t size;
-    void* pMapped;
-}
-ArBuffer;
+    ArBufferHandle              handle;
+    uint64_t                    address;
+    uint64_t                    size;
+    void*                       pMapped;
+} ArBuffer;
 
 typedef struct ArImage
 {
-    ArImageHandle handle;
-    uint32_t index;
-    uint32_t width;
-    uint32_t height;
-    uint32_t depth;
-}
-ArImage;
+    ArImageHandle               handle;
+    uint32_t                    index;
+    uint32_t                    width;
+    uint32_t                    height;
+    uint32_t                    depth;
+} ArImage;
 
 typedef struct ArShader
 {
-    ArShaderHandle handle;
-}
-ArShader;
+    ArShaderHandle              handle;
+} ArShader;
 
 typedef struct ArPipeline
 {
-    ArPipelineHandle handle;
-}
-ArPipeline;
+    ArPipelineHandle            handle;
+} ArPipeline;
 
 typedef struct ArApplicationInfo
 {
-    void (*pfnInit)();
-    void (*pfnTeardown)();
-    void (*pfnUpdate)();
-    ArRequest (*pfnUpdateResources)();
-    void (*pfnResize)();
-    void (*pfnRecordCommands)();
-    int32_t width, height;
-    ArBool8 enableVsync;
-}
-ArApplicationInfo;
+    void                        (*pfnInit)();
+    void                        (*pfnTeardown)();
+    void                        (*pfnUpdate)();
+    ArRequest                   (*pfnUpdateResources)();
+    void                        (*pfnResize)();
+    void                        (*pfnRecordCommands)();
+    int32_t                     width, height;
+    ArBool8                     enableVsync;
+} ArApplicationInfo;
 
 typedef struct ArAttachment
 {
-    ArImage const* pImage;
-    ArLoadOp loadOp;
-    ArStoreOp storeOp;
-    ArClearValue clearValue;
-}
-ArAttachment;
+    ArImage const*              pImage;
+    ArLoadOp                    loadOp;
+    ArStoreOp                   storeOp;
+    ArClearValue                clearValue;
+} ArAttachment;
+
+typedef struct ArBarrier
+{
+    ArImage const*              pImage;
+    ArImageLayout               oldLayout;
+    ArImageLayout               newLayout;
+} ArBarrier;
+
+typedef struct ArDrawIndirectCommand
+{
+    uint32_t                    vertexCount;
+    uint32_t                    instanceCount;
+    uint32_t                    firstVertex;
+    uint32_t                    firstInstance;
+} ArDrawIndirectCommand;
+
+typedef struct ArDrawIndexedIndirectCommand
+{
+    uint32_t                    indexCount;
+    uint32_t                    instanceCount;
+    uint32_t                    firstIndex;
+    int32_t                     vertexOffset;
+    uint32_t                    firstInstance;
+} ArDrawIndexedIndirectCommand;
 
 typedef struct ArBlendAttachment
 {
-    ArBool8 blendEnable;
-    ArBlendOp colorBlendOp;
-    ArBlendOp alphaBlendOp;
-    ArBlendFactor srcColorFactor;
-    ArBlendFactor dstColorFactor;
-    ArBlendFactor srcAlphaFactor;
-    ArBlendFactor dstAlphaFactor;
-    ArColorComponentFlags colorWriteMask;
-}
-ArBlendAttachment;
+    ArBool8                     blendEnable;
+    ArBlendOp                   colorBlendOp;
+    ArBlendOp                   alphaBlendOp;
+    ArBlendFactor               srcColorFactor;
+    ArBlendFactor               dstColorFactor;
+    ArBlendFactor               srcAlphaFactor;
+    ArBlendFactor               dstAlphaFactor;
+    ArColorComponentFlags       colorWriteMask;
+} ArBlendAttachment;
 
 typedef struct ArDepthState
 {
-    ArBool8 depthTestEnable;
-    ArBool8 depthWriteEnable;
-    ArCompareOp compareOp;
-}
-ArDepthState;
+    ArBool8                     depthTestEnable;
+    ArBool8                     depthWriteEnable;
+    ArCompareOp                 compareOp;
+} ArDepthState;
 
 typedef struct ArImageCreateInfo
 {
-    ArImageUsage usage;
-    ArSampler sampler;
-    uint32_t dstArrayElement;
-    uint32_t width;
-    uint32_t height;
-    uint32_t depth;
-}
-ArImageCreateInfo;
+    ArImageUsage                usage;
+    ArSampler                   sampler;
+    uint32_t                    dstArrayElement;
+    uint32_t                    width;
+    uint32_t                    height;
+    uint32_t                    depth;
+} ArImageCreateInfo;
 
 typedef struct ArGraphicsPipelineCreateInfo
 {
-    uint32_t blendAttachmentCount;
-    ArBlendAttachment const* pBlendAttachments;
-    ArDepthState depthState;
-    ArShader vertShader;
-    ArShader fragShader;
-    ArPolygonMode polygonMode;
-    ArTopology topology;
-    ArCullMode cullMode;
-    ArFrontFace frontFace;
-}
-ArGraphicsPipelineCreateInfo;
+    uint32_t                    blendAttachmentCount;
+    ArBlendAttachment const*    pBlendAttachments;
+    ArDepthState                depthState;
+    ArShader                    vertShader;
+    ArShader                    fragShader;
+    ArPolygonMode               polygonMode;
+    ArTopology                  topology;
+    ArCullMode                  cullMode;
+    ArFrontFace                 frontFace;
+} ArGraphicsPipelineCreateInfo;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-ArBool8 arIsKeyDown(ArKey key);
-ArBool8 arIsKeyPressed(ArKey key);
-ArBool8 arIsKeyReleased(ArKey key);
-ArBool8 arIsButtonDown(ArButton button);
-ArBool8 arIsButtonPressed(ArButton button);
-ArBool8 arIsButtonReleased(ArButton button);
 
 double arGetTime();
 float  arGetTimef();
@@ -351,27 +360,130 @@ uint32_t arGetRenderHeight();
 float arGetWindowAspectRatio();
 float arGetRenderAspectRatio();
 
-void arExecute(ArApplicationInfo const* pApplicationInfo);
-void arPollEvents(void);
-void arWaitEvents(void);
-void arCreateDynamicBuffer(ArBuffer* pBuffer, uint64_t capacity);
-void arCreateStaticBuffer(ArBuffer* pBuffer, uint64_t size, void const* pData);
-void arDestroyBuffer(ArBuffer* pBuffer);
-void arCreateImage(ArImage* pImage, ArImageCreateInfo const* pImageCreateInfo);
-void arUpdateImage(ArImage* pImage, size_t size, void const* pData);
-void arDestroyImage(ArImage* pImage);
-void arCreateShaderFromFile(ArShader* pShader, char const* filename);
-void arCreateShaderFromMemory(ArShader* pShader, uint32_t const* pCode, size_t codeSize);
-void arDestroyShader(ArShader* pShader);
-void arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo const* pPipelineCreateInfo);
-void arDestroyPipeline(ArPipeline* pPipeline);
+ArBool8 arIsKeyDown(ArKey               key);
+ArBool8 arIsKeyPressed(ArKey            key);
+ArBool8 arIsKeyReleased(ArKey           key);
+ArBool8 arIsButtonDown(ArButton         button);
+ArBool8 arIsButtonPressed(ArButton      button);
+ArBool8 arIsButtonReleased(ArButton     button);
+
+void arCmdEndRendering(void);
 void arCmdBeginPresent(void);
 void arCmdEndPresent(void);
-void arCmdBeginRendering(uint32_t colorAttachmentCount, ArAttachment const* pColorAttachments, ArAttachment const* pDepthAttachment);
-void arCmdEndRendering(void);
-void arCmdPushConstants(uint32_t offset, uint32_t size, void const* pValues);
-void arCmdBindGraphicsPipeline(ArPipeline const* pPipeline);
-void arCmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t vertex, uint32_t instance);
+void arPollEvents(void);
+void arWaitEvents(void);
+
+void arExecute(
+    ArApplicationInfo const*            pApplicationInfo);
+
+void arSetWindowTitle(
+    char const*                         title);
+
+void arCreateDynamicBuffer(
+    ArBuffer*                           pBuffer,
+    uint64_t                            capacity);
+
+void arCreateStaticBuffer(
+    ArBuffer*                           pBuffer,
+    uint64_t                            size,
+    void const*                         pData);
+
+void arDestroyBuffer(
+    ArBuffer*                           pBuffer);
+
+void arCreateImage(
+    ArImage*                            pImage,
+    ArImageCreateInfo const*            pImageCreateInfo);
+
+void arUpdateImage(
+    ArImage*                            pImage,
+    size_t                              dataSize,
+    void const*                         pData);
+
+void arDestroyImage(
+    ArImage*                            pImage);
+
+void arCreateShaderFromFile(
+    ArShader*                           pShader,
+    char const*                         filename);
+
+void arCreateShaderFromMemory(
+    ArShader*                           pShader,
+    uint32_t const*                     pCode,
+    size_t                              codeSize);
+
+void arDestroyShader(
+    ArShader*                           pShader);
+
+void arCreateGraphicsPipeline(
+    ArPipeline*                         pPipeline,
+    ArGraphicsPipelineCreateInfo const* pPipelineCreateInfo);
+
+void arDestroyPipeline(
+    ArPipeline*                         pPipeline);
+
+void arCmdBeginRendering(
+    uint32_t                            colorAttachmentCount,
+    ArAttachment const*                 pColorAttachments,
+    ArAttachment const*                 pDepthAttachment);
+
+void arCmdPushConstants(
+    uint32_t                            offset,
+    uint32_t                            size,
+    void const*                         pValues);
+
+void arCmdBindIndexBuffer(
+    ArBuffer const*                     pBuffer,
+    uint64_t                            offset,
+    ArIndexType                         indexType);
+
+void arCmdBindGraphicsPipeline(
+    ArPipeline const*                   pPipeline);
+
+void arCmdPipelineBarrier(
+    uint32_t barrierCount,
+    ArBarrier const* pBarriers);
+
+void arCmdDraw(
+    uint32_t                            vertexCount,
+    uint32_t                            instanceCount,
+    uint32_t                            firstVertex,
+    uint32_t                            firstInstance);
+
+void arCmdDrawIndirect(
+    ArBuffer const*                     pBuffer,
+    uint64_t                            offset,
+    uint32_t                            drawCount,
+    uint32_t                            stride);
+
+void arCmdDrawIndirectCount(
+    ArBuffer const*                     pBuffer,
+    uint64_t                            offset,
+    ArBuffer const*                     pCountBuffer,
+    uint64_t                            countBufferOffset,
+    uint32_t                            maxDrawCount,
+    uint32_t                            stride);
+
+void arCmdDrawIndexed(
+    uint32_t                            indexCount,
+    uint32_t                            instanceCount,
+    uint32_t                            firstIndex,
+    int32_t                             vertexOffset,
+    uint32_t                            firstInstance);
+
+void arCmdDrawIndexedIndirect(
+    ArBuffer const*                     pBuffer,
+    uint64_t                            offset,
+    uint32_t                            drawCount,
+    uint32_t                            stride);
+
+void arCmdDrawIndexedIndirectCount(
+    ArBuffer const*                     pBuffer,
+    uint64_t                            offset,
+    ArBuffer const*                     pCountBuffer,
+    uint64_t                            countBufferOffset,
+    uint32_t                            maxDrawCount,
+    uint32_t                            stride);
 
 #ifdef __cplusplus
 }

@@ -110,23 +110,23 @@ update()
 {
     arPollEvents();
 
-    float const ar = 1.0f / arGetRenderAspectRatio();
+    float const aspr = 1.0f / arGetRenderAspectRatio();
     float const time = arGetTimef();
     float const c = cosf(time);
     float const s = sinf(time);
 
     sceneData.projectionMatrix = {
-        ar,   0.0f, 0.0f, 0.0f,
+        aspr, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 1.0f,
         0.0f, 0.0f, -.5f, 0.0f
     };
 
     sceneData.cubeMatrix = {
-        + c, c * s, s * s, 0.f,
-        - s, c * c, s * c, 0.f,
-        0.f,   - s,     c, 0.f,
-        0.f,   0.f,   5.f, 1.f
+        + c, c*s, s*s, 0.f,
+        - s, c*c, s*c, 0.f,
+        0.f,  -s,   c, 0.f,
+        0.f, 0.f, 5.f, 1.f
     };
 }
 
@@ -169,6 +169,22 @@ recordCommands()
         .clearValue = { .depth = 1.0f }
     };
 
+    {
+        ArBarrier const barriers[2] = {
+            ArBarrier{
+                .pImage = &colorFb,
+                .oldLayout = AR_IMAGE_LAYOUT_UNDEFINED,
+                .newLayout = AR_IMAGE_LAYOUT_COLOR_ATTACHMENT
+            },
+            ArBarrier{
+                .pImage = &depthFb,
+                .oldLayout = AR_IMAGE_LAYOUT_UNDEFINED,
+                .newLayout = AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT
+            }
+        };
+
+        arCmdPipelineBarrier(2, barriers);
+    }
     arCmdBeginRendering(1, &colorAttachment, &depthAttachment);
     {
         arCmdPushConstants(0, sizeof(pushConstant), pushConstant);
@@ -176,6 +192,15 @@ recordCommands()
         arCmdDraw(36, 1, 0, 0);
     }
     arCmdEndRendering();
+    {
+        ArBarrier const barrier = {
+            .pImage = &colorFb,
+            .oldLayout = AR_IMAGE_LAYOUT_COLOR_ATTACHMENT,
+            .newLayout = AR_IMAGE_LAYOUT_SHADER_READ
+        };
+
+        arCmdPipelineBarrier(1, &barrier);
+    }
 
     arCmdBeginPresent();
     {
@@ -196,7 +221,8 @@ main()
         .pfnResize = resize,
         .pfnRecordCommands = recordCommands,
         .width = 1280,
-        .height = 720
+        .height = 720,
+        .enableVsync = true
     };
 
     arExecute(&applicationInfo);

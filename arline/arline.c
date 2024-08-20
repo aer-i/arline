@@ -66,6 +66,7 @@ struct
     ArBool8 windowShouldClose;
     ArKeyInternal keys[255];
     ArKeyInternal buttons[5];
+    bool vsyncEnabled;
 }
 global g;
 
@@ -73,9 +74,9 @@ internal uint32_t arFindMemoryType(uint32_t typeBitsRequirement, VkMemoryPropert
 internal void arAllocBuffer(ArBuffer* pBuffer, ArBool8 isDynamic);
 internal void arWindowCreate(int32_t width, int32_t height);
 internal void arWindowTeardown(void);
-internal void arSwapchainCreate(void);
+internal void arSwapchainCreate(bool vsync);
 internal void arSwapchainTeardown(void);
-internal void arSwapchainRecreate(void);
+internal void arSwapchainRecreate(bool vsync);
 internal void arContextCreate(void);
 internal void arContextTeardown(void);
 internal void arRecordCommands(void);
@@ -143,7 +144,11 @@ arWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             }
         }
 
-        arSwapchainRecreate();
+        if (g.device)
+        {
+            vkDeviceWaitIdle(g.device);
+            arSwapchainRecreate(g.vsyncEnabled);
+        }
         break;
     case WM_GETMINMAXINFO:
         ((PMINMAXINFO)lp)->ptMinTrackSize.x = 150;
@@ -161,10 +166,7 @@ arWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         PostQuitMessage(0);
         break;
     case WM_SYSCOMMAND:
-        if ((wp & 0xfff0) == SC_KEYMENU)
-        {
-            break;
-        }
+        if ((wp & 0xfff0) == SC_KEYMENU) break;
     default:
         return(DefWindowProcA(hwnd, msg, wp, lp));
     }
@@ -197,10 +199,18 @@ arWindowCreate(int32_t width, int32_t height)
     RegisterClassExA(&wc);
 
     g.hwnd = CreateWindowExA(
-        WS_EX_DLGMODALFRAME, "arline", NULL, WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, width, height,
-        NULL, NULL, g.hinstance, NULL
-    );
+        WS_EX_DLGMODALFRAME,
+        "arline",
+        NULL,
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        width,
+        height,
+        NULL,
+        NULL,
+        g.hinstance,
+        NULL);
 
     BOOL useDarkMode = true;
     DwmSetWindowAttribute(g.hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDarkMode, sizeof(useDarkMode));
@@ -215,8 +225,10 @@ arWindowTeardown(void)
 }
 
 internal void
-arSwapchainCreate(void)
+arSwapchainCreate(bool vsync)
 {
+    g.vsyncEnabled = vsync;
+
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g.gpu, g.surface, &surfaceCapabilities);
 
@@ -244,7 +256,7 @@ arSwapchainCreate(void)
     swapchainCreateInfo.queueFamilyIndexCount = 0;
     swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapchainCreateInfo.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    swapchainCreateInfo.presentMode = vsync ? VK_PRESENT_MODE_FIFO_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
     swapchainCreateInfo.clipped = true;
     swapchainCreateInfo.oldSwapchain = NULL;
     vkCreateSwapchainKHR(g.device, &swapchainCreateInfo, NULL, &g.swapchain);
@@ -326,17 +338,19 @@ arSwapchainTeardown(void)
 }
 
 internal void
-arSwapchainRecreate(void)
+arSwapchainRecreate(bool vsync)
 {
-    if (!g.device)
+    uint32_t prevWidth  = g.extent.width;
+    uint32_t prevHeihgt = g.extent.height;
+
+    arSwapchainTeardown();
+    arSwapchainCreate(vsync);
+
+    if (prevWidth != g.extent.width || prevHeihgt != g.extent.height)
     {
-        return;
+        g.pfnResize();
     }
 
-    vkDeviceWaitIdle(g.device);
-    arSwapchainTeardown();
-    arSwapchainCreate();
-    g.pfnResize();
     arRecordCommands();
 }
 
@@ -670,7 +684,7 @@ arContextCreate(void)
         vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerNearestToEdge);
     }
     {
-        arSwapchainCreate();
+        arSwapchainCreate(g.vsyncEnabled);
     }
     {
         g.commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
@@ -714,6 +728,8 @@ arContextTeardown(void)
 internal void
 arRecordCommands(void)
 {
+    vkResetCommandPool(g.device, g.commandPool, 0);
+
     for (uint32_t i = g.imageCount; i--; )
     {
         VkCommandBufferBeginInfo commandBufferBeginInfo;
@@ -818,11 +834,15 @@ arAllocBuffer(ArBuffer* pBuffer, ArBool8 isDynamic)
     fallbackFlags[0] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     fallbackFlags[1] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-    uint32_t typeIndex = arFindMemoryType(memoryRequirements.memoryTypeBits, preferedFlags[isDynamic]);
+    uint32_t typeIndex = arFindMemoryType(
+        memoryRequirements.memoryTypeBits,
+        preferedFlags[isDynamic]);
 
     if (typeIndex == UINT32_MAX)
     {
-        typeIndex = arFindMemoryType(memoryRequirements.memoryTypeBits, fallbackFlags[isDynamic]);
+        typeIndex = arFindMemoryType(
+            memoryRequirements.memoryTypeBits,
+            fallbackFlags[isDynamic]);
     }
 
     VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo;
@@ -870,7 +890,13 @@ arCreateStaticBuffer(ArBuffer* pBuffer, uint64_t size, void const* pData)
         region.srcOffset = 0;
         region.dstOffset = 0;
         region.size = size;
-        vkCmdCopyBuffer(g.transferCommandBuffer, stagingBuffer.handle.data[0], pBuffer->handle.data[0], 1, &region);
+
+        vkCmdCopyBuffer(
+            g.transferCommandBuffer,
+            stagingBuffer.handle.data[0],
+            pBuffer->handle.data[0],
+            1,
+            &region);
     }
     arEndTransfer();
 
@@ -1033,11 +1059,11 @@ arCreateImage(ArImage* pImage, ArImageCreateInfo const* pImageCreateInfo)
 }
 
 void
-arUpdateImage(ArImage* pImage, size_t size, void const* pData)
+arUpdateImage(ArImage* pImage, size_t dataSize, void const* pData)
 {
     ArBuffer stagingBuffer;
-    arCreateDynamicBuffer(&stagingBuffer, size);
-    memcpy(stagingBuffer.pMapped, pData, size);
+    arCreateDynamicBuffer(&stagingBuffer, dataSize);
+    memcpy(stagingBuffer.pMapped, pData, dataSize);
 
     arBeginTransfer();
     {
@@ -1504,74 +1530,223 @@ arCmdEndRendering(void)
 void
 arCmdPushConstants(uint32_t offset, uint32_t size, void const* pValues)
 {
-    vkCmdPushConstants(g.pFrame->cmd, g.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT |
-                       VK_SHADER_STAGE_FRAGMENT_BIT, offset, size, pValues);
+    vkCmdPushConstants(
+        g.pFrame->cmd,
+        g.pipelineLayout,
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        offset,
+        size,
+        pValues);
+}
+
+void
+arCmdBindIndexBuffer(
+    ArBuffer const* pBuffer,
+    uint64_t offset,
+    ArIndexType indexType)
+{
+    vkCmdBindIndexBuffer(
+        g.pFrame->cmd,
+        *pBuffer->handle.data,
+        offset,
+        indexType);
 }
 
 void
 arCmdBindGraphicsPipeline(ArPipeline const* pPipeline)
 {
-    vkCmdBindPipeline(g.pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pPipeline->handle.data);
+    vkCmdBindPipeline(
+        g.pFrame->cmd,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        pPipeline->handle.data);
 }
 
 void
-arCmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t vertex, uint32_t instance)
+arCmdPipelineBarrier(
+    uint32_t barrierCount,
+    ArBarrier const* pBarriers)
 {
-    vkCmdDraw(g.pFrame->cmd, vertexCount, instanceCount, vertex, instance);
-}
+    VkImageAspectFlags const aspects[] = { 
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT
+    };
 
-void arExecute(ArApplicationInfo const* pApplicationInfo)
-{
-    g.pfnUpdate = pApplicationInfo->pfnUpdate;
-    g.pfnResize = pApplicationInfo->pfnResize;
-    g.pfnRecordCommands = pApplicationInfo->pfnRecordCommands;
-    arWindowCreate(pApplicationInfo->width, pApplicationInfo->height);
-    arContextCreate();
+    VkPipelineStageFlags2 const stages[] = {
+        VK_PIPELINE_STAGE_2_NONE,
+        VK_PIPELINE_STAGE_2_NONE,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_PIPELINE_STAGE_2_NONE,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+    };
 
-    pApplicationInfo->pfnInit();
-    arRecordCommands(); 
+    VkAccessFlags2 const accesses[] = {
+        VK_ACCESS_2_NONE,
+        VK_ACCESS_2_NONE,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_NONE,
+        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+        VK_ACCESS_2_TRANSFER_READ_BIT,
+        VK_ACCESS_2_TRANSFER_WRITE_BIT,
+    };
+    
+    VkImageMemoryBarrier2 imageMemoryBarriers[8];
 
-    for (;;)
+    bool usingDepth;
+
+    for (uint32_t i = 0; i < barrierCount; ++i)
     {
-        pApplicationInfo->pfnUpdate();
+        usingDepth = false;
+        usingDepth = (bool)(usingDepth + (pBarriers[i].oldLayout == AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT));
+        usingDepth = (bool)(usingDepth + (pBarriers[i].newLayout == AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT));
 
-        if (g.windowShouldClose)
-        {
-            break;
-        }
-
-        vkWaitForFences(g.device, 1, &g.fence, 0, UINT64_MAX);
-        vkResetFences(g.device, 1, &g.fence);
-
-        vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.acqSemaphore.semaphore, NULL, &g.imageIndex);
-
-        switch (pApplicationInfo->pfnUpdateResources())
-        {
-        case AR_REQUEST_NONE: break;
-        case AR_REQUEST_RECORD_COMMANDS:
-        case AR_REQUEST_VSYNC_DISABLE:
-        case AR_REQUEST_VSYNC_ENABLE:
-            break; // TODO))
-        }
-
-        g.commandBufferInfo.commandBuffer = g.frames[g.imageIndex].cmd;
-        vkQueueSubmit2(g.queue, 1, &g.submitInfo, g.fence);
-        vkQueuePresentKHR(g.queue, &g.presentInfo);
+        imageMemoryBarriers[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        imageMemoryBarriers[i].pNext = NULL;
+        imageMemoryBarriers[i].image = *pBarriers[i].pImage->handle.data;
+        imageMemoryBarriers[i].srcStageMask = stages[pBarriers[i].oldLayout];
+        imageMemoryBarriers[i].dstStageMask = stages[pBarriers[i].newLayout];
+        imageMemoryBarriers[i].srcAccessMask = accesses[pBarriers[i].oldLayout];
+        imageMemoryBarriers[i].dstAccessMask = accesses[pBarriers[i].newLayout];
+        imageMemoryBarriers[i].oldLayout = pBarriers[i].oldLayout;
+        imageMemoryBarriers[i].newLayout = pBarriers[i].newLayout;
+        imageMemoryBarriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        imageMemoryBarriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        imageMemoryBarriers[i].subresourceRange.aspectMask = aspects[usingDepth];
+        imageMemoryBarriers[i].subresourceRange.baseArrayLayer = 0;
+        imageMemoryBarriers[i].subresourceRange.baseMipLevel = 0;
+        imageMemoryBarriers[i].subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+        imageMemoryBarriers[i].subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
     }
 
-    vkDeviceWaitIdle(g.device);
-    pApplicationInfo->pfnTeardown();
-    arContextTeardown();
-    arWindowTeardown();
+    VkDependencyInfo dependencyInfo;
+    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependencyInfo.pNext = NULL;
+    dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    dependencyInfo.memoryBarrierCount = 0;
+    dependencyInfo.bufferMemoryBarrierCount = 0;
+    dependencyInfo.imageMemoryBarrierCount = barrierCount;
+    dependencyInfo.pImageMemoryBarriers = imageMemoryBarriers;
+    vkCmdPipelineBarrier2(g.pFrame->cmd, &dependencyInfo);
+}
+
+void
+arCmdDraw(
+    uint32_t vertexCount,
+    uint32_t instanceCount,
+    uint32_t firstVertex,
+    uint32_t firstInstance)
+{
+    vkCmdDraw(
+        g.pFrame->cmd,
+        vertexCount,
+        instanceCount,
+        firstVertex,
+        firstInstance);
+}
+
+void
+arCmdDrawIndirect(
+    ArBuffer const* pBuffer,
+    uint64_t offset,
+    uint32_t drawCount,
+    uint32_t stride)
+{
+    vkCmdDrawIndirect(
+        g.pFrame->cmd,
+        *pBuffer->handle.data,
+        offset,
+        drawCount,
+        stride);
+}
+
+void
+arCmdDrawIndirectCount(
+    ArBuffer const* pBuffer,
+    uint64_t offset,
+    ArBuffer const* pCountBuffer,
+    uint64_t countBufferOffset,
+    uint32_t maxDrawCount,
+    uint32_t stride)
+{
+    vkCmdDrawIndirectCount(
+        g.pFrame->cmd,
+        *pBuffer->handle.data,
+        offset,
+        *pCountBuffer->handle.data,
+        countBufferOffset,
+        maxDrawCount,
+        stride);
+}
+
+void
+arCmdDrawIndexed(
+    uint32_t indexCount,
+    uint32_t instanceCount,
+    uint32_t firstIndex,
+    int32_t vertexOffset,
+    uint32_t firstInstance)
+{
+    vkCmdDrawIndexed(
+        g.pFrame->cmd,
+        indexCount,
+        instanceCount,
+        firstIndex,
+        vertexOffset,
+        firstInstance);
+}
+
+void
+arCmdDrawIndexedIndirect(
+    ArBuffer const* pBuffer,
+    uint64_t offset,
+    uint32_t drawCount,
+    uint32_t stride)
+{
+    vkCmdDrawIndexedIndirect(
+        g.pFrame->cmd,
+        *pBuffer->handle.data,
+        offset,
+        drawCount,
+        stride);
+}
+
+void
+arCmdDrawIndexedIndirectCount(
+    ArBuffer const* pBuffer,
+    uint64_t offset,
+    ArBuffer const* pCountBuffer,
+    uint64_t countBufferOffset,
+    uint32_t maxDrawCount,
+    uint32_t stride)
+{
+    vkCmdDrawIndexedIndirectCount(
+        g.pFrame->cmd,
+        *pBuffer->handle.data,
+        offset,
+        *pCountBuffer->handle.data,
+        countBufferOffset,
+        maxDrawCount,
+        stride);
+}
+
+void
+arSetWindowTitle(char const *title)
+{
+    SetWindowTextA(
+        g.hwnd,
+        title);
 }
 
 void
 arPollEvents(void)
 {
-    for (uint16_t i = sizeof(g.keys) + sizeof(g.buttons); i--; )
+    for (ArKeyInternal* key = g.keys; key != g.keys + 260; key += 1)
     {
-        g.keys[i].isPressed  = false;
-        g.keys[i].isReleased = false;
+        key->isPressed  = false;
+        key->isReleased = false;
     }
 
     MSG msg;
@@ -1631,47 +1806,101 @@ arGetTime()
     LARGE_INTEGER value;
     QueryPerformanceCounter(&value);
 
-    return (double)(value.QuadPart - g.timeOffset.QuadPart) / g.timeFrequency.QuadPart;
+    return (double)
+        (value.QuadPart - g.timeOffset.QuadPart) /
+        g.timeFrequency.QuadPart;
 }
 
 float
 arGetTimef()
 {
-    return (float)arGetTime();
+    return((float)arGetTime());
 }
 
 uint32_t
 arGetWindowWidth()
 {
-    return (uint32_t)g.width;
+    return((uint32_t)g.width);
 }
 
 uint32_t
 arGetWindowHeight()
 {
-    return (uint32_t)g.height;
+    return((uint32_t)g.height);
 }
 
 uint32_t
 arGetRenderWidth()
 {
-    return g.extent.width;
+    return(g.extent.width);
 }
 
 uint32_t
 arGetRenderHeight()
 {
-    return g.extent.height;
+    return(g.extent.height);
 }
 
 float
 arGetWindowAspectRatio()
 {
-    return g.width / (float)g.height;
+    return(g.width / (float)g.height);
 }
 
 float
 arGetRenderAspectRatio()
 {
-    return g.extent.width / (float)g.extent.height;
+    return(g.extent.width / (float)g.extent.height);
+}
+
+void
+arExecute(ArApplicationInfo const* pApplicationInfo)
+{
+    g.pfnUpdate = pApplicationInfo->pfnUpdate;
+    g.pfnResize = pApplicationInfo->pfnResize;
+    g.pfnRecordCommands = pApplicationInfo->pfnRecordCommands;
+    g.vsyncEnabled = pApplicationInfo->enableVsync;
+    arWindowCreate(pApplicationInfo->width, pApplicationInfo->height);
+    arContextCreate();
+
+    pApplicationInfo->pfnInit();
+    arRecordCommands(); 
+
+    for (;;)
+    {
+        pApplicationInfo->pfnUpdate();
+
+        if (g.windowShouldClose)
+        {
+            break;
+        }
+
+        vkWaitForFences(g.device, 1, &g.fence, 0, UINT64_MAX);
+        vkResetFences(g.device, 1, &g.fence);
+
+        switch (pApplicationInfo->pfnUpdateResources())
+        {
+        case AR_REQUEST_NONE:
+            break;
+        case AR_REQUEST_RECORD_COMMANDS:
+            arRecordCommands();
+            break;
+        case AR_REQUEST_VSYNC_DISABLE:
+            arSwapchainRecreate(false);
+            break;
+        case AR_REQUEST_VSYNC_ENABLE:
+            arSwapchainRecreate(true);
+            break;
+        }
+
+        vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.acqSemaphore.semaphore, NULL, &g.imageIndex);
+        g.commandBufferInfo.commandBuffer = g.frames[g.imageIndex].cmd;
+        vkQueueSubmit2(g.queue, 1, &g.submitInfo, g.fence);
+        vkQueuePresentKHR(g.queue, &g.presentInfo);
+    }
+
+    vkDeviceWaitIdle(g.device);
+    pApplicationInfo->pfnTeardown();
+    arContextTeardown();
+    arWindowTeardown();
 }
