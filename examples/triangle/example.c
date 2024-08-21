@@ -86,13 +86,33 @@ resize() {}
 static void
 recordCommands()
 {
-    arCmdBeginPresent();
+    ArAttachment colorAttachment;
+    colorAttachment.pImage = NULL;
+    colorAttachment.loadOp = AR_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = AR_STORE_OP_STORE;
+    colorAttachment.clearValue.color.float32[0] = 0.25f;
+    colorAttachment.clearValue.color.float32[1] = 0.5f;
+    colorAttachment.clearValue.color.float32[2] = 0.75f;
+    colorAttachment.clearValue.color.float32[3] = 1.0f;
+
+    ArBarrier barriers[2];
+    barriers[0].pImage = NULL;
+    barriers[0].oldLayout = AR_IMAGE_LAYOUT_UNDEFINED;
+    barriers[0].newLayout = AR_IMAGE_LAYOUT_COLOR_ATTACHMENT;
+
+    barriers[1].pImage = NULL;
+    barriers[1].oldLayout = AR_IMAGE_LAYOUT_COLOR_ATTACHMENT;
+    barriers[1].newLayout = AR_IMAGE_LAYOUT_PRESENT_SRC;
+
+    arCmdPipelineBarrier(1, &barriers[0]);
+    arCmdBeginRendering(1, &colorAttachment, NULL);
 
     arCmdBindGraphicsPipeline(&g.pipeline);
     arCmdPushConstants(0, sizeof(g.vertexBuffer.address), &g.vertexBuffer.address);
     arCmdDraw(3, 1, 0, 0);
 
-    arCmdEndPresent();
+    arCmdEndRendering();
+    arCmdPipelineBarrier(1, &barriers[1]);
 }
 
 static int

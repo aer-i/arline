@@ -153,23 +153,23 @@ recordCommands()
         sceneBuffer.address
     };
 
-    ArAttachment const colorAttachment = {
-        .pImage = &colorFb,
-        .loadOp = AR_LOAD_OP_CLEAR,
-        .storeOp = AR_STORE_OP_STORE,
-        .clearValue = {
-            .color = ArClearColor{ 0.6f, 0.7f, 1.0f, 1.0f }
-        }
-    };
-
-    ArAttachment const depthAttachment = {
-        .pImage = &depthFb,
-        .loadOp = AR_LOAD_OP_CLEAR,
-        .storeOp = AR_STORE_OP_DONT_CARE,
-        .clearValue = { .depth = 1.0f }
-    };
-
     {
+        ArAttachment const colorAttachment = {
+            .pImage = &colorFb,
+            .loadOp = AR_LOAD_OP_CLEAR,
+            .storeOp = AR_STORE_OP_STORE,
+            .clearValue = {
+                .color = ArClearColor{ 0.6f, 0.7f, 1.0f, 1.0f }
+            }
+        };
+
+        ArAttachment const depthAttachment = {
+            .pImage = &depthFb,
+            .loadOp = AR_LOAD_OP_CLEAR,
+            .storeOp = AR_STORE_OP_DONT_CARE,
+            .clearValue = { .depth = 1.0f }
+        };
+
         ArBarrier const barriers[2] = {
             ArBarrier{
                 .pImage = &colorFb,
@@ -184,13 +184,11 @@ recordCommands()
         };
 
         arCmdPipelineBarrier(2, barriers);
+        arCmdBeginRendering(1, &colorAttachment, &depthAttachment);
     }
-    arCmdBeginRendering(1, &colorAttachment, &depthAttachment);
-    {
-        arCmdPushConstants(0, sizeof(pushConstant), pushConstant);
-        arCmdBindGraphicsPipeline(&cubePipeline);
-        arCmdDraw(36, 1, 0, 0);
-    }
+    arCmdPushConstants(0, sizeof(pushConstant), pushConstant);
+    arCmdBindGraphicsPipeline(&cubePipeline);
+    arCmdDraw(36, 1, 0, 0);
     arCmdEndRendering();
     {
         ArBarrier const barrier = {
@@ -202,12 +200,30 @@ recordCommands()
         arCmdPipelineBarrier(1, &barrier);
     }
 
-    arCmdBeginPresent();
     {
-        arCmdBindGraphicsPipeline(&finalImagePipeline);
-        arCmdDraw(3, 1, 0, 0);
+        ArAttachment const colorAttachment = {
+            .loadOp = AR_LOAD_OP_DONT_CARE,
+            .storeOp = AR_STORE_OP_DONT_CARE,
+        };
+
+        ArBarrier const barrier = {
+            .newLayout = AR_IMAGE_LAYOUT_COLOR_ATTACHMENT
+        };
+
+        arCmdPipelineBarrier(1, &barrier);
+        arCmdBeginRendering(1, &colorAttachment, nullptr);
     }
-    arCmdEndPresent();
+    arCmdBindGraphicsPipeline(&finalImagePipeline);
+    arCmdDraw(3, 1, 0, 0);
+    {
+        ArBarrier const barrier = {
+            .oldLayout = AR_IMAGE_LAYOUT_COLOR_ATTACHMENT,
+            .newLayout = AR_IMAGE_LAYOUT_PRESENT_SRC
+        };
+
+        arCmdEndRendering();
+        arCmdPipelineBarrier(1, &barrier);
+    }
 }
 
 int
@@ -222,7 +238,7 @@ main()
         .pfnRecordCommands = recordCommands,
         .width = 1280,
         .height = 720,
-        .enableVsync = true
+        .enableVsync = false
     };
 
     arExecute(&applicationInfo);

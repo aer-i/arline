@@ -12,6 +12,7 @@
 typedef struct
 {
     VkCommandBuffer cmd;
+    VkCommandBuffer presentCmd;
     VkImage image;
     VkImageView view;
 }
@@ -32,12 +33,17 @@ struct
     void (*pfnRecordCommands)();
     LARGE_INTEGER timeOffset;
     LARGE_INTEGER timeFrequency;
+    double previousTime;
+    double deltaTime;
     HINSTANCE hinstance;
     HWND hwnd;
     VkInstance instance;
     VkPhysicalDevice gpu;
     VkSurfaceKHR surface;
-    VkCommandPool commandPool;
+    uint32_t graphicsQueueFamily;
+    uint32_t presentQueueFamily;
+    VkCommandPool graphicsCommandPool;
+    VkCommandPool presentCommandPool;
     VkCommandPool transferCommandPool;
     VkCommandBuffer transferCommandBuffer;
     VkPipelineLayout pipelineLayout;
@@ -52,21 +58,30 @@ struct
     uint32_t imageIndex;
     uint32_t imageCount;
     VkDevice device;
-    VkQueue queue;
+    VkQueue graphicsQueue;
+    VkQueue presentQueue;
     VkSwapchainKHR swapchain;
     VkFence fence;
-    VkCommandBufferSubmitInfo commandBufferInfo;
+    VkCommandBufferSubmitInfo graphicsCommandBufferInfo;
+    VkCommandBufferSubmitInfo presentCommandBufferInfo;
     VkSemaphoreSubmitInfo acqSemaphore;
     VkSemaphoreSubmitInfo renSemaphore;
+    VkSemaphoreSubmitInfo preSemaphore;
     VkSubmitInfo2 submitInfo;
+    VkSubmitInfo2 presentSubmitInfo;
     VkPresentInfoKHR presentInfo;
     ArFrame frames[6];
     VkExtent2D extent;
     int32_t width, height;
+    ArBool8 unifiedQueue;
+    ArBool8 vsyncEnabled;
     ArBool8 windowShouldClose;
+    int32_t cursorX;
+    int32_t cursorY;
+    int32_t cursorDeltaX;
+    int32_t cursorDeltaY;
     ArKeyInternal keys[255];
     ArKeyInternal buttons[5];
-    bool vsyncEnabled;
 }
 global g;
 
@@ -84,7 +99,11 @@ internal void arBeginTransfer();
 internal void arEndTransfer();
 
 internal LRESULT
-arWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+arWndProc(
+    HWND hwnd,
+    UINT msg,
+    WPARAM wp,
+    LPARAM lp)
 {
     switch (msg)
     {
@@ -175,7 +194,9 @@ arWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 }
 
 internal void
-arWindowCreate(int32_t width, int32_t height)
+arWindowCreate(
+    int32_t width,
+    int32_t height)
 {
     QueryPerformanceFrequency(&g.timeFrequency);
     QueryPerformanceCounter(&g.timeOffset);
@@ -262,6 +283,7 @@ arSwapchainCreate(bool vsync)
     vkCreateSwapchainKHR(g.device, &swapchainCreateInfo, NULL, &g.swapchain);
 
     VkCommandBuffer commandBuffers[6];
+    VkCommandBuffer presentCommandBuffers[6];
     VkImage swapchainImages[6];
     vkGetSwapchainImagesKHR(g.device, g.swapchain, &g.imageCount, NULL);
     vkGetSwapchainImagesKHR(g.device, g.swapchain, &g.imageCount, swapchainImages);
@@ -270,20 +292,30 @@ arSwapchainCreate(bool vsync)
     commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     commandPoolCreateInfo.pNext = NULL;
     commandPoolCreateInfo.flags = 0;
-    commandPoolCreateInfo.queueFamilyIndex = 0;
-    vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.commandPool);
+    commandPoolCreateInfo.queueFamilyIndex = g.graphicsQueueFamily;
+    vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.graphicsCommandPool);
 
     VkCommandBufferAllocateInfo commandBufferAllocateInfo;
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     commandBufferAllocateInfo.pNext = NULL;
-    commandBufferAllocateInfo.commandPool = g.commandPool;
+    commandBufferAllocateInfo.commandPool = g.graphicsCommandPool;
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     commandBufferAllocateInfo.commandBufferCount = g.imageCount;
     vkAllocateCommandBuffers(g.device, &commandBufferAllocateInfo, commandBuffers);
 
+    if (!g.unifiedQueue)
+    {
+        commandPoolCreateInfo.queueFamilyIndex = g.presentQueueFamily;
+        vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.presentCommandPool);
+        
+        commandBufferAllocateInfo.commandPool = g.presentCommandPool;
+        vkAllocateCommandBuffers(g.device, &commandBufferAllocateInfo, presentCommandBuffers);
+    }
+
     for (uint32_t i = g.imageCount; i--; )
     {
         g.frames[i].cmd = commandBuffers[i];
+        g.frames[i].presentCmd = presentCommandBuffers[i];
         g.frames[i].image = swapchainImages[i];
 
         VkImageViewCreateInfo imageViewCreateInfo;
@@ -303,6 +335,46 @@ arSwapchainCreate(bool vsync)
         imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
         imageViewCreateInfo.subresourceRange.layerCount = 1;
         vkCreateImageView(g.device, &imageViewCreateInfo, NULL, &g.frames[i].view);
+
+        if (!g.unifiedQueue)
+        {
+            VkCommandBufferBeginInfo commandBufferBeginInfo;
+            commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            commandBufferBeginInfo.pNext = NULL;
+            commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+            commandBufferBeginInfo.pInheritanceInfo = NULL;
+
+            VkImageMemoryBarrier2 imageMemoryBarrier;
+            imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+            imageMemoryBarrier.pNext = NULL;
+            imageMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_2_NONE;
+            imageMemoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_2_NONE;
+            imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            imageMemoryBarrier.srcQueueFamilyIndex = g.graphicsQueueFamily;
+            imageMemoryBarrier.dstQueueFamilyIndex = g.presentQueueFamily;
+            imageMemoryBarrier.image = swapchainImages[i];
+            imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
+            imageMemoryBarrier.subresourceRange.levelCount = 1;
+            imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
+            imageMemoryBarrier.subresourceRange.layerCount = 1;
+
+            VkDependencyInfo dependencyInfo;
+            dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            dependencyInfo.pNext = NULL;
+            dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+            dependencyInfo.memoryBarrierCount = 0;
+            dependencyInfo.bufferMemoryBarrierCount = 0;
+            dependencyInfo.imageMemoryBarrierCount = 1;
+            dependencyInfo.pImageMemoryBarriers = &imageMemoryBarrier;
+
+            vkBeginCommandBuffer(presentCommandBuffers[i], &commandBufferBeginInfo);
+            vkCmdPipelineBarrier2(presentCommandBuffers[i], &dependencyInfo);
+            vkEndCommandBuffer(presentCommandBuffers[i]);
+        }
     }
 
     g.submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
@@ -311,14 +383,24 @@ arSwapchainCreate(bool vsync)
     g.submitInfo.waitSemaphoreInfoCount = 1;
     g.submitInfo.pWaitSemaphoreInfos = &g.acqSemaphore;
     g.submitInfo.commandBufferInfoCount = 1;
-    g.submitInfo.pCommandBufferInfos = &g.commandBufferInfo;
+    g.submitInfo.pCommandBufferInfos = &g.graphicsCommandBufferInfo;
     g.submitInfo.signalSemaphoreInfoCount = 1;
     g.submitInfo.pSignalSemaphoreInfos = &g.renSemaphore;
+
+    g.presentSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    g.presentSubmitInfo.pNext = NULL;
+    g.presentSubmitInfo.flags = 0;
+    g.presentSubmitInfo.waitSemaphoreInfoCount = 1;
+    g.presentSubmitInfo.pWaitSemaphoreInfos = &g.renSemaphore;
+    g.presentSubmitInfo.commandBufferInfoCount = 1;
+    g.presentSubmitInfo.pCommandBufferInfos = &g.presentCommandBufferInfo;
+    g.presentSubmitInfo.signalSemaphoreInfoCount = 1;
+    g.presentSubmitInfo.pSignalSemaphoreInfos = &g.preSemaphore;
 
     g.presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     g.presentInfo.pNext = NULL;
     g.presentInfo.waitSemaphoreCount = 1;
-    g.presentInfo.pWaitSemaphores = &g.renSemaphore.semaphore;
+    g.presentInfo.pWaitSemaphores = g.unifiedQueue ? &g.renSemaphore.semaphore : &g.preSemaphore.semaphore;
     g.presentInfo.swapchainCount = 1;
     g.presentInfo.pSwapchains = &g.swapchain;
     g.presentInfo.pImageIndices = &g.imageIndex;
@@ -333,7 +415,12 @@ arSwapchainTeardown(void)
         vkDestroyImageView(g.device, g.frames[i].view, NULL);
     }
 
-    vkDestroyCommandPool(g.device, g.commandPool, NULL);
+    if (!g.unifiedQueue)
+    {
+        vkDestroyCommandPool(g.device, g.presentCommandPool, NULL);
+    }
+
+    vkDestroyCommandPool(g.device, g.graphicsCommandPool, NULL);
     vkDestroySwapchainKHR(g.device, g.swapchain, NULL);
 }
 
@@ -397,21 +484,65 @@ arContextCreate(void)
         vkEnumeratePhysicalDevices(g.instance, &gpuCount, gpus);
 
         g.gpu = gpus[0];
+
+        VkQueueFamilyProperties queueProperties[32];
+        uint32_t queuePropertyCount;
+        vkGetPhysicalDeviceQueueFamilyProperties(g.gpu, &queuePropertyCount, NULL);
+        vkGetPhysicalDeviceQueueFamilyProperties(g.gpu, &queuePropertyCount, queueProperties);
+
+        g.graphicsQueueFamily = ~0u;
+        g.presentQueueFamily  = ~0u;
+
+        for (uint32_t i = queuePropertyCount; i--; )
+        {
+            if (queueProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+            {
+                g.graphicsQueueFamily = i;
+            }
+        }
+
+        for (uint32_t i = queuePropertyCount; i--; )
+        {
+            VkBool32 presentSupported;
+            vkGetPhysicalDeviceSurfaceSupportKHR(
+                g.gpu,
+                i,
+                g.surface,
+                &presentSupported);
+            
+            if (presentSupported && i != g.graphicsQueueFamily)
+            {
+                g.presentQueueFamily = i;
+            }
+        }
+
+        if (g.presentQueueFamily == ~0u)
+        {
+            g.presentQueueFamily = g.graphicsQueueFamily;
+            g.unifiedQueue = true;
+        }
     }
     {
         char const* deviceExtensions[1];
         deviceExtensions[0] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 
         float priorities[1];
-        priorities[0] = 1.0f;
+        priorities[0] = 0.0f;
 
-        VkDeviceQueueCreateInfo queueCreateInfo;
-        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queueCreateInfo.pNext = NULL;
-        queueCreateInfo.flags = 0;
-        queueCreateInfo.queueCount = 1;
-        queueCreateInfo.queueFamilyIndex = 0;
-        queueCreateInfo.pQueuePriorities = priorities;
+        VkDeviceQueueCreateInfo queueCreateInfos[2];
+        queueCreateInfos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfos[0].pNext = NULL;
+        queueCreateInfos[0].flags = 0;
+        queueCreateInfos[0].queueCount = 1;
+        queueCreateInfos[0].queueFamilyIndex = g.graphicsQueueFamily;
+        queueCreateInfos[0].pQueuePriorities = priorities;
+
+        queueCreateInfos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfos[1].pNext = NULL;
+        queueCreateInfos[1].flags = 0;
+        queueCreateInfos[1].queueCount = 1;
+        queueCreateInfos[1].queueFamilyIndex = g.presentQueueFamily;
+        queueCreateInfos[1].pQueuePriorities = priorities;
 
         VkPhysicalDeviceVulkan12Features vulkan12Features;
         vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
@@ -546,21 +677,22 @@ arContextCreate(void)
         deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         deviceCreateInfo.pNext = &features;
         deviceCreateInfo.flags = 0;
-        deviceCreateInfo.queueCreateInfoCount = 1;
-        deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+        deviceCreateInfo.queueCreateInfoCount = 2 - g.unifiedQueue;
+        deviceCreateInfo.pQueueCreateInfos = queueCreateInfos;
         deviceCreateInfo.enabledLayerCount = 0;
         deviceCreateInfo.enabledExtensionCount = 1;
         deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
         deviceCreateInfo.pEnabledFeatures = NULL;
         vkCreateDevice(g.gpu, &deviceCreateInfo, NULL, &g.device);
-        vkGetDeviceQueue(g.device, 0, 0, &g.queue);
+        vkGetDeviceQueue(g.device, g.graphicsQueueFamily, 0, &g.graphicsQueue);
+        vkGetDeviceQueue(g.device, g.presentQueueFamily,  0, &g.presentQueue);
     }
     {
         VkCommandPoolCreateInfo commandPoolCreateInfo;
         commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         commandPoolCreateInfo.pNext = NULL;
         commandPoolCreateInfo.flags = 0;
-        commandPoolCreateInfo.queueFamilyIndex = 0;
+        commandPoolCreateInfo.queueFamilyIndex = g.graphicsQueueFamily;
         vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.transferCommandPool);
 
         VkCommandBufferAllocateInfo commandBufferAllocateInfo;
@@ -576,6 +708,9 @@ arContextCreate(void)
         semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         semaphoreCreateInfo.pNext = NULL;
         semaphoreCreateInfo.flags = 0;
+
+        if (!g.unifiedQueue)
+        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.preSemaphore.semaphore);
         vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.acqSemaphore.semaphore);
         vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.renSemaphore.semaphore);
 
@@ -687,9 +822,13 @@ arContextCreate(void)
         arSwapchainCreate(g.vsyncEnabled);
     }
     {
-        g.commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-        g.commandBufferInfo.pNext = NULL;
-        g.commandBufferInfo.deviceMask = 0;
+        g.graphicsCommandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        g.graphicsCommandBufferInfo.pNext = NULL;
+        g.graphicsCommandBufferInfo.deviceMask = 0;
+
+        g.presentCommandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        g.presentCommandBufferInfo.pNext = NULL;
+        g.presentCommandBufferInfo.deviceMask = 0;
 
         g.acqSemaphore.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
         g.acqSemaphore.pNext = NULL;
@@ -700,8 +839,14 @@ arContextCreate(void)
         g.renSemaphore.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
         g.renSemaphore.pNext = NULL;
         g.renSemaphore.value = 0;
-        g.renSemaphore.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        g.renSemaphore.stageMask = g.unifiedQueue ? VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         g.renSemaphore.deviceIndex = 0;
+
+        g.preSemaphore.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        g.preSemaphore.pNext = NULL;
+        g.preSemaphore.value = 0;
+        g.preSemaphore.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        g.preSemaphore.deviceIndex = 0;
     }
 }
 
@@ -709,6 +854,12 @@ internal void
 arContextTeardown(void)
 {
     arSwapchainTeardown();
+
+    if (!g.unifiedQueue)
+    {
+        vkDestroySemaphore(g.device, g.preSemaphore.semaphore, NULL);
+    }
+    
     vkDestroyPipelineLayout(g.device, g.pipelineLayout, NULL);
     vkDestroySampler(g.device, g.samplerNearestRepeat, NULL);
     vkDestroySampler(g.device, g.samplerNearestToEdge, NULL);
@@ -728,7 +879,7 @@ arContextTeardown(void)
 internal void
 arRecordCommands(void)
 {
-    vkResetCommandPool(g.device, g.commandPool, 0);
+    vkResetCommandPool(g.device, g.graphicsCommandPool, 0);
 
     for (uint32_t i = g.imageCount; i--; )
     {
@@ -749,7 +900,7 @@ arRecordCommands(void)
 }
 
 internal void
-arBeginTransfer()
+arBeginTransfer(void)
 {
     vkResetCommandPool(g.device, g.transferCommandPool, 0);
 
@@ -762,7 +913,7 @@ arBeginTransfer()
 }
 
 internal void
-arEndTransfer()
+arEndTransfer(void)
 {
     vkEndCommandBuffer(g.transferCommandBuffer);
 
@@ -780,20 +931,25 @@ arEndTransfer()
     submitInfo.commandBufferInfoCount = 1;
     submitInfo.pCommandBufferInfos = &commandBufferInfo;
     submitInfo.signalSemaphoreInfoCount = 0;
-    vkQueueSubmit2(g.queue, 1, &submitInfo, NULL);
-    vkQueueWaitIdle(g.queue);
+    vkQueueSubmit2(g.graphicsQueue, 1, &submitInfo, NULL);
+    vkQueueWaitIdle(g.graphicsQueue);
 }
 
 internal uint32_t
-arFindMemoryType(uint32_t typeBitsRequirement, VkMemoryPropertyFlags properties)
+arFindMemoryType(
+    uint32_t typeBitsRequirement,
+    VkMemoryPropertyFlags properties)
 {
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties(g.gpu, &memoryProperties);
 
-    for (uint32_t memoryIndex = 0; memoryIndex < memoryProperties.memoryTypeCount; ++memoryIndex)
+    for (uint32_t memoryIndex = 0;
+         memoryIndex < memoryProperties.memoryTypeCount;
+         ++memoryIndex)
     {
         if ((typeBitsRequirement & (1 << memoryIndex)) &&
-            (memoryProperties.memoryTypes[memoryIndex].propertyFlags & properties) == properties)
+            (memoryProperties.memoryTypes[memoryIndex].propertyFlags
+            & properties) == properties)
         {
             return(memoryIndex);
         }
@@ -803,7 +959,9 @@ arFindMemoryType(uint32_t typeBitsRequirement, VkMemoryPropertyFlags properties)
 }
 
 internal void
-arAllocBuffer(ArBuffer* pBuffer, ArBool8 isDynamic)
+arAllocBuffer(
+    ArBuffer* pBuffer,
+    ArBool8 isDynamic)
 {
     const VkBufferUsageFlags bufferUsage =
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -867,7 +1025,9 @@ arAllocBuffer(ArBuffer* pBuffer, ArBool8 isDynamic)
 }
 
 void
-arCreateDynamicBuffer(ArBuffer* pBuffer, uint64_t capacity)
+arCreateDynamicBuffer(
+    ArBuffer* pBuffer,
+    uint64_t capacity)
 {
     pBuffer->size = capacity;
     arAllocBuffer(pBuffer, true);
@@ -875,7 +1035,10 @@ arCreateDynamicBuffer(ArBuffer* pBuffer, uint64_t capacity)
 }
 
 void
-arCreateStaticBuffer(ArBuffer* pBuffer, uint64_t size, void const* pData)
+arCreateStaticBuffer(
+    ArBuffer* pBuffer,
+    uint64_t size,
+    void const* pData)
 {
     pBuffer->size = size;
     arAllocBuffer(pBuffer, false);
@@ -904,7 +1067,8 @@ arCreateStaticBuffer(ArBuffer* pBuffer, uint64_t size, void const* pData)
 }
 
 void
-arDestroyBuffer(ArBuffer* pBuffer)
+arDestroyBuffer(
+    ArBuffer* pBuffer)
 {
     if (pBuffer->pMapped)
     {
@@ -916,7 +1080,9 @@ arDestroyBuffer(ArBuffer* pBuffer)
 }
 
 void
-arCreateImage(ArImage* pImage, ArImageCreateInfo const* pImageCreateInfo)
+arCreateImage(
+    ArImage* pImage,
+    ArImageCreateInfo const* pImageCreateInfo)
 {
     VkImageAspectFlags aspect = 0;
     VkImageUsageFlags usage = 0;
@@ -1059,7 +1225,10 @@ arCreateImage(ArImage* pImage, ArImageCreateInfo const* pImageCreateInfo)
 }
 
 void
-arUpdateImage(ArImage* pImage, size_t dataSize, void const* pData)
+arUpdateImage(
+    ArImage* pImage,
+    size_t dataSize,
+    void const* pData)
 {
     ArBuffer stagingBuffer;
     arCreateDynamicBuffer(&stagingBuffer, dataSize);
@@ -1126,7 +1295,8 @@ arUpdateImage(ArImage* pImage, size_t dataSize, void const* pData)
 }
 
 void
-arDestroyImage(ArImage* pImage)
+arDestroyImage(
+    ArImage* pImage)
 {
     vkDestroyImageView(g.device, pImage->handle.data[2], NULL);
     vkFreeMemory(g.device, pImage->handle.data[1], NULL);
@@ -1134,7 +1304,9 @@ arDestroyImage(ArImage* pImage)
 }
 
 void
-arCreateShaderFromFile(ArShader* pShader, char const* filename)
+arCreateShaderFromFile(
+    ArShader* pShader,
+    char const* filename)
 {
     LARGE_INTEGER fileSize;
     HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1150,7 +1322,10 @@ arCreateShaderFromFile(ArShader* pShader, char const* filename)
 }
 
 void
-arCreateShaderFromMemory(ArShader* pShader, uint32_t const* pCode, size_t codeSize)
+arCreateShaderFromMemory(
+    ArShader* pShader,
+    uint32_t const* pCode,
+    size_t codeSize)
 {
     VkShaderModuleCreateInfo shaderModuleCreateInfo;
     shaderModuleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -1162,13 +1337,16 @@ arCreateShaderFromMemory(ArShader* pShader, uint32_t const* pCode, size_t codeSi
 }
 
 void
-arDestroyShader(ArShader* pShader)
+arDestroyShader(
+    ArShader* pShader)
 {
     vkDestroyShaderModule(g.device, pShader->handle.data, NULL);
 }
 
 void
-arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo const* pPipelineCreateInfo)
+arCreateGraphicsPipeline(
+    ArPipeline* pPipeline,
+    ArGraphicsPipelineCreateInfo const* pPipelineCreateInfo)
 {
     VkFormat colorFormats[8];
     colorFormats[0] = VK_FORMAT_B8G8R8A8_UNORM;
@@ -1330,125 +1508,17 @@ arCreateGraphicsPipeline(ArPipeline* pPipeline, ArGraphicsPipelineCreateInfo con
 }
 
 void
-arDestroyPipeline(ArPipeline* pPipeline)
+arDestroyPipeline(
+    ArPipeline* pPipeline)
 {
     vkDestroyPipeline(g.device, pPipeline->handle.data, NULL);
 }
 
 void
-arCmdBeginPresent()
-{
-    VkImageMemoryBarrier2 imageMemoryBarrier;
-    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    imageMemoryBarrier.pNext = NULL;
-    imageMemoryBarrier.image = g.pFrame->image;
-    imageMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    imageMemoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    imageMemoryBarrier.srcAccessMask = VK_ACCESS_2_NONE;
-    imageMemoryBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
-    imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
-    imageMemoryBarrier.subresourceRange.layerCount = 1;
-    imageMemoryBarrier.subresourceRange.levelCount = 1;
-
-    VkDependencyInfo dependencyInfo;
-    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-    dependencyInfo.pNext = NULL;
-    dependencyInfo.dependencyFlags = 0;
-    dependencyInfo.imageMemoryBarrierCount = 1;
-    dependencyInfo.memoryBarrierCount = 0;
-    dependencyInfo.bufferMemoryBarrierCount = 0;
-    dependencyInfo.pImageMemoryBarriers = &imageMemoryBarrier;
-    vkCmdPipelineBarrier2(g.pFrame->cmd, &dependencyInfo);
-
-    VkRenderingAttachmentInfo colorAttachmentInfo;
-    colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    colorAttachmentInfo.pNext = NULL;
-    colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_NONE;
-    colorAttachmentInfo.resolveImageView = NULL;
-    colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colorAttachmentInfo.imageView = g.pFrame->view;
-    colorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colorAttachmentInfo.clearValue.color.uint32[0] = 0x00000000;
-    colorAttachmentInfo.clearValue.color.uint32[1] = 0x00000000;
-    colorAttachmentInfo.clearValue.color.uint32[2] = 0x00000000;
-    colorAttachmentInfo.clearValue.color.uint32[3] = 0x00000000;
-
-    VkRenderingInfo renderingInfo;
-    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    renderingInfo.pNext = NULL;
-    renderingInfo.flags = 0;
-    renderingInfo.renderArea.offset.x = 0;
-    renderingInfo.renderArea.offset.y = 0;
-    renderingInfo.renderArea.extent.width  = g.extent.width;
-    renderingInfo.renderArea.extent.height = g.extent.height;
-    renderingInfo.layerCount = 1;
-    renderingInfo.viewMask = 0;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachments = &colorAttachmentInfo;
-    renderingInfo.pDepthAttachment = NULL;
-    renderingInfo.pStencilAttachment = NULL;
-    vkCmdBeginRendering(g.pFrame->cmd, &renderingInfo);
-
-    VkRect2D scissor;
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width  = g.extent.width;
-    scissor.extent.height = g.extent.height;
-    vkCmdSetScissor(g.pFrame->cmd, 0, 1, &scissor);
-
-    VkViewport viewport;
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width  = (float)g.extent.width;
-    viewport.height = (float)g.extent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(g.pFrame->cmd, 0, 1, &viewport);
-}
-
-void
-arCmdEndPresent()
-{
-    VkImageMemoryBarrier2 imageMemoryBarrier;
-    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    imageMemoryBarrier.pNext = NULL;
-    imageMemoryBarrier.image = g.pFrame->image;
-    imageMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    imageMemoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    imageMemoryBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-    imageMemoryBarrier.dstAccessMask = VK_ACCESS_2_NONE;
-    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
-    imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
-    imageMemoryBarrier.subresourceRange.layerCount = 1;
-    imageMemoryBarrier.subresourceRange.levelCount = 1;
-
-    VkDependencyInfo dependencyInfo;
-    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-    dependencyInfo.pNext = NULL;
-    dependencyInfo.dependencyFlags = 0;
-    dependencyInfo.imageMemoryBarrierCount = 1;
-    dependencyInfo.memoryBarrierCount = 0;
-    dependencyInfo.bufferMemoryBarrierCount = 0;
-    dependencyInfo.pImageMemoryBarriers = &imageMemoryBarrier;
-    vkCmdEndRendering(g.pFrame->cmd);
-    vkCmdPipelineBarrier2(g.pFrame->cmd, &dependencyInfo);
-}
-
-void
-arCmdBeginRendering(uint32_t colorAttachmentCount, ArAttachment const* pColorAttachments, ArAttachment const* pDepthAttachment)
+arCmdBeginRendering(
+    uint32_t colorAttachmentCount,
+    ArAttachment const* pColorAttachments,
+    ArAttachment const* pDepthAttachment)
 {
     VkRenderingAttachmentInfo attachments[9];
 
@@ -1469,9 +1539,17 @@ arCmdBeginRendering(uint32_t colorAttachmentCount, ArAttachment const* pColorAtt
 
     for (uint32_t i = 0; i < colorAttachmentCount; ++i)
     {
+        if (!pColorAttachments[i].pImage)
+        {
+            attachments[i].imageView = g.pFrame->view;
+        }
+        else
+        {
+            attachments[i].imageView = pColorAttachments[i].pImage->handle.data[2];
+        }
+
         attachments[i].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         attachments[i].pNext = NULL;
-        attachments[i].imageView = pColorAttachments[i].pImage->handle.data[2];
         attachments[i].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         attachments[i].resolveMode = VK_RESOLVE_MODE_NONE;
         attachments[i].resolveImageView = NULL;
@@ -1485,8 +1563,16 @@ arCmdBeginRendering(uint32_t colorAttachmentCount, ArAttachment const* pColorAtt
     }
 
     VkExtent2D extent;
-    extent.width  = pColorAttachments->pImage->width;
-    extent.height = pColorAttachments->pImage->height;
+    if (pColorAttachments->pImage)
+    {
+        extent.width  = pColorAttachments->pImage->width;
+        extent.height = pColorAttachments->pImage->height;
+    }
+    else
+    {
+        extent.width  = g.extent.width;
+        extent.height = g.extent.height;
+    }
 
     VkRenderingInfo renderingInfo;
     renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
@@ -1528,7 +1614,10 @@ arCmdEndRendering(void)
 }
 
 void
-arCmdPushConstants(uint32_t offset, uint32_t size, void const* pValues)
+arCmdPushConstants(
+    uint32_t offset,
+    uint32_t size,
+    void const* pValues)
 {
     vkCmdPushConstants(
         g.pFrame->cmd,
@@ -1553,7 +1642,8 @@ arCmdBindIndexBuffer(
 }
 
 void
-arCmdBindGraphicsPipeline(ArPipeline const* pPipeline)
+arCmdBindGraphicsPipeline(
+    ArPipeline const* pPipeline)
 {
     vkCmdBindPipeline(
         g.pFrame->cmd,
@@ -1561,64 +1651,101 @@ arCmdBindGraphicsPipeline(ArPipeline const* pPipeline)
         pPipeline->handle.data);
 }
 
+internal VkPipelineStageFlags2
+arImageLayoutToPipelineStage(
+    ArImageLayout layout)
+{
+    switch (layout)
+    {
+    case AR_IMAGE_LAYOUT_COLOR_ATTACHMENT:
+        return(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT); 
+    case AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT:
+        return(VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+               VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT);
+    case AR_IMAGE_LAYOUT_SHADER_READ:
+        return(VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+    case AR_IMAGE_LAYOUT_TRANSFER_SRC:
+    case AR_IMAGE_LAYOUT_TRANSFER_DST:
+        return(VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+    case AR_IMAGE_LAYOUT_PRESENT_SRC:
+        return(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+    default:
+        return(VK_PIPELINE_STAGE_2_NONE);
+    }
+}
+
+internal VkAccessFlags2
+arImageLayoutToAccess(
+    ArImageLayout layout)
+{
+    switch (layout)
+    {
+    case AR_IMAGE_LAYOUT_COLOR_ATTACHMENT:
+        return(VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT); 
+    case AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT:
+        return(VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+    case AR_IMAGE_LAYOUT_SHADER_READ:
+        return(VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+    case AR_IMAGE_LAYOUT_TRANSFER_SRC:
+        return(VK_ACCESS_2_TRANSFER_READ_BIT);
+    case AR_IMAGE_LAYOUT_TRANSFER_DST:
+        return(VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    default:
+        return(VK_ACCESS_2_NONE);
+    }
+}
+
 void
 arCmdPipelineBarrier(
     uint32_t barrierCount,
     ArBarrier const* pBarriers)
 {
-    VkImageAspectFlags const aspects[] = { 
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_ASPECT_DEPTH_BIT
-    };
-
-    VkPipelineStageFlags2 const stages[] = {
-        VK_PIPELINE_STAGE_2_NONE,
-        VK_PIPELINE_STAGE_2_NONE,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-        VK_PIPELINE_STAGE_2_NONE,
-        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-        VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-    };
-
-    VkAccessFlags2 const accesses[] = {
-        VK_ACCESS_2_NONE,
-        VK_ACCESS_2_NONE,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-        VK_ACCESS_2_NONE,
-        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-        VK_ACCESS_2_TRANSFER_READ_BIT,
-        VK_ACCESS_2_TRANSFER_WRITE_BIT,
-    };
-    
     VkImageMemoryBarrier2 imageMemoryBarriers[8];
-
-    bool usingDepth;
 
     for (uint32_t i = 0; i < barrierCount; ++i)
     {
-        usingDepth = false;
-        usingDepth = (bool)(usingDepth + (pBarriers[i].oldLayout == AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT));
-        usingDepth = (bool)(usingDepth + (pBarriers[i].newLayout == AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT));
-
         imageMemoryBarriers[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
         imageMemoryBarriers[i].pNext = NULL;
-        imageMemoryBarriers[i].image = *pBarriers[i].pImage->handle.data;
-        imageMemoryBarriers[i].srcStageMask = stages[pBarriers[i].oldLayout];
-        imageMemoryBarriers[i].dstStageMask = stages[pBarriers[i].newLayout];
-        imageMemoryBarriers[i].srcAccessMask = accesses[pBarriers[i].oldLayout];
-        imageMemoryBarriers[i].dstAccessMask = accesses[pBarriers[i].newLayout];
+        imageMemoryBarriers[i].srcStageMask = arImageLayoutToPipelineStage(pBarriers[i].oldLayout);
+        imageMemoryBarriers[i].srcAccessMask = arImageLayoutToAccess(pBarriers[i].oldLayout);
+        imageMemoryBarriers[i].dstStageMask = arImageLayoutToPipelineStage(pBarriers[i].newLayout);
+        imageMemoryBarriers[i].dstAccessMask = arImageLayoutToAccess(pBarriers[i].newLayout);
         imageMemoryBarriers[i].oldLayout = pBarriers[i].oldLayout;
         imageMemoryBarriers[i].newLayout = pBarriers[i].newLayout;
         imageMemoryBarriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         imageMemoryBarriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        imageMemoryBarriers[i].subresourceRange.aspectMask = aspects[usingDepth];
+        imageMemoryBarriers[i].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         imageMemoryBarriers[i].subresourceRange.baseArrayLayer = 0;
         imageMemoryBarriers[i].subresourceRange.baseMipLevel = 0;
-        imageMemoryBarriers[i].subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-        imageMemoryBarriers[i].subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+        imageMemoryBarriers[i].subresourceRange.layerCount = 1;
+        imageMemoryBarriers[i].subresourceRange.levelCount = 1;
+
+        if (pBarriers[i].pImage)
+        {
+            imageMemoryBarriers[i].image = *pBarriers[i].pImage->handle.data;
+        }
+        else
+        {
+            imageMemoryBarriers[i].srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+            imageMemoryBarriers[i].image = g.pFrame->image;
+        }
+
+        if (pBarriers[i].newLayout == AR_IMAGE_LAYOUT_PRESENT_SRC)
+        {
+            imageMemoryBarriers[i].newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            
+            if (!g.unifiedQueue)
+            {
+                imageMemoryBarriers[i].dstStageMask = VK_PIPELINE_STAGE_2_NONE;
+                imageMemoryBarriers[i].srcQueueFamilyIndex = g.graphicsQueueFamily;
+                imageMemoryBarriers[i].dstQueueFamilyIndex = g.presentQueueFamily;
+            }
+        }
+        else if (pBarriers[i].oldLayout == AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT ||
+                 pBarriers[i].newLayout == AR_IMAGE_LAYOUT_DEPTH_ATTACHMENT)
+        {
+            imageMemoryBarriers[i].subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        }
     }
 
     VkDependencyInfo dependencyInfo;
@@ -1733,7 +1860,8 @@ arCmdDrawIndexedIndirectCount(
 }
 
 void
-arSetWindowTitle(char const *title)
+arSetWindowTitle(
+    char const* title)
 {
     SetWindowTextA(
         g.hwnd,
@@ -1755,6 +1883,19 @@ arPollEvents(void)
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
     }
+
+    double now = arGetTime();
+    g.deltaTime = now - g.previousTime;
+    g.previousTime = now;
+
+    POINT cursorPos;
+    GetPhysicalCursorPos(&cursorPos);
+
+    g.cursorDeltaX = (int32_t)cursorPos.x - g.cursorX;
+    g.cursorDeltaY = (int32_t)cursorPos.y - g.cursorY;
+
+    g.cursorX = (int32_t)cursorPos.x;
+    g.cursorY = (int32_t)cursorPos.y;
 }
 
 void
@@ -1762,6 +1903,24 @@ arWaitEvents(void)
 {
     WaitMessage();
     arPollEvents();
+}
+
+void
+arShowCursor(void)
+{
+    while (ShowCursor(true) < 0);
+}
+
+void
+arHideCursor(void)
+{
+    while (ShowCursor(false) >= 0);
+}
+
+void
+arSetCursorPosition(int32_t x, int32_t y)
+{
+    SetCursorPos((int)x, (int)y);
 }
 
 ArBool8
@@ -1801,7 +1960,7 @@ arIsButtonReleased(ArButton button)
 }
 
 double
-arGetTime()
+arGetTime(void)
 {
     LARGE_INTEGER value;
     QueryPerformanceCounter(&value);
@@ -1811,50 +1970,87 @@ arGetTime()
         g.timeFrequency.QuadPart;
 }
 
+double
+arGetDeltaTime(void)
+{
+    return(g.deltaTime);
+}
+
 float
-arGetTimef()
+arGetTimef(void)
 {
     return((float)arGetTime());
 }
 
+float
+arGetDeltaTimef(void)
+{
+    return((float)g.deltaTime);
+}
+
 uint32_t
-arGetWindowWidth()
+arGetWindowWidth(void)
 {
     return((uint32_t)g.width);
 }
 
 uint32_t
-arGetWindowHeight()
+arGetWindowHeight(void)
 {
     return((uint32_t)g.height);
 }
 
 uint32_t
-arGetRenderWidth()
+arGetRenderWidth(void)
 {
     return(g.extent.width);
 }
 
 uint32_t
-arGetRenderHeight()
+arGetRenderHeight(void)
 {
     return(g.extent.height);
 }
 
 float
-arGetWindowAspectRatio()
+arGetWindowAspectRatio(void)
 {
     return(g.width / (float)g.height);
 }
 
 float
-arGetRenderAspectRatio()
+arGetRenderAspectRatio(void)
 {
     return(g.extent.width / (float)g.extent.height);
 }
 
+int32_t
+arGetCursorX(void)
+{
+    return(g.cursorX);
+}
+
+int32_t
+arGetCursorY(void)
+{
+    return(g.cursorY);
+}
+
+int32_t
+arGetCursorDeltaX(void)
+{
+    return(g.cursorDeltaX);
+}
+
+int32_t
+arGetCursorDeltaY(void)
+{
+    return(g.cursorDeltaY);
+}
+
 void
-arExecute(ArApplicationInfo const* pApplicationInfo)
+arExecute(
+    ArApplicationInfo const* pApplicationInfo)
 {
     g.pfnUpdate = pApplicationInfo->pfnUpdate;
     g.pfnResize = pApplicationInfo->pfnResize;
@@ -1894,9 +2090,17 @@ arExecute(ArApplicationInfo const* pApplicationInfo)
         }
 
         vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.acqSemaphore.semaphore, NULL, &g.imageIndex);
-        g.commandBufferInfo.commandBuffer = g.frames[g.imageIndex].cmd;
-        vkQueueSubmit2(g.queue, 1, &g.submitInfo, g.fence);
-        vkQueuePresentKHR(g.queue, &g.presentInfo);
+
+        g.graphicsCommandBufferInfo.commandBuffer = g.frames[g.imageIndex].cmd;
+        vkQueueSubmit2(g.graphicsQueue, 1, &g.submitInfo, g.fence);
+
+        if (!g.unifiedQueue)
+        {
+            g.presentCommandBufferInfo.commandBuffer = g.frames[g.imageIndex].presentCmd;
+            vkQueueSubmit2(g.presentQueue, 1, &g.presentSubmitInfo, NULL);
+        }
+
+        vkQueuePresentKHR(g.presentQueue, &g.presentInfo);
     }
 
     vkDeviceWaitIdle(g.device);
