@@ -1904,6 +1904,9 @@ arPollEvents(void)
         key->isReleased = false;
     }
 
+    g.cursorRelX = 0;
+    g.cursorRelY = 0;
+
     MSG msg;
     while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE))
     {
