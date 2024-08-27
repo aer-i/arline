@@ -6,6 +6,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <vulkan/vulkan.h>
+#include <hidusage.h>
 #include <dwmapi.h>
 #include <stdbool.h>
 
@@ -20,9 +21,9 @@ ArFrame;
 
 typedef struct
 {
-    ArBool8 isDown     : 1;
-    ArBool8 isPressed  : 1;
-    ArBool8 isReleased : 1;
+    bool isDown     : 1;
+    bool isPressed  : 1;
+    bool isReleased : 1;
 }
 ArKeyInternal;
 
@@ -72,22 +73,27 @@ struct
     VkPresentInfoKHR presentInfo;
     ArFrame frames[6];
     VkExtent2D extent;
-    int32_t width, height;
-    ArBool8 unifiedQueue;
-    ArBool8 vsyncEnabled;
-    ArBool8 windowShouldClose;
-    int32_t cursorX;
-    int32_t cursorY;
-    int32_t cursorDeltaX;
-    int32_t cursorDeltaY;
+    int width, height;
+    bool unifiedQueue;
+    bool vsyncEnabled;
+    bool windowShouldClose;
+    int globalCursorX;
+    int globalCursorY;
+    int cursorX;
+    int cursorY;
+    int cursorDeltaX;
+    int cursorDeltaY;
+    int cursorRelX;
+    int cursorRelY;
     ArKeyInternal keys[255];
     ArKeyInternal buttons[5];
+    BYTE lpb[sizeof(RAWINPUT)];
 }
 global g;
 
 internal uint32_t arFindMemoryType(uint32_t typeBitsRequirement, VkMemoryPropertyFlags properties);
-internal void arAllocBuffer(ArBuffer* pBuffer, ArBool8 isDynamic);
-internal void arWindowCreate(int32_t width, int32_t height);
+internal void arAllocBuffer(ArBuffer* pBuffer, bool isDynamic);
+internal void arWindowCreate(int width, int height);
 internal void arWindowTeardown(void);
 internal void arSwapchainCreate(bool vsync);
 internal void arSwapchainTeardown(void);
@@ -149,6 +155,20 @@ arWndProc(
         g.keys[wp].isDown = false;
         g.keys[wp].isReleased = true;
         break;
+    case WM_INPUT:
+    {
+        UINT dwSize = sizeof(RAWINPUT);
+
+        GetRawInputData((HRAWINPUT)lp, RID_INPUT, g.lpb, &dwSize, sizeof(RAWINPUTHEADER));
+
+        RAWINPUT* raw = (RAWINPUT*)g.lpb;
+
+        if (!raw->header.dwType /* == RIM_TYPEMOUSE */)
+        {
+            g.cursorRelX = raw->data.mouse.lLastX;
+            g.cursorRelY = raw->data.mouse.lLastY;
+        } 
+    } break;
     case WM_SIZE:
         g.width = LOWORD(lp);
         g.height = HIWORD(lp);
@@ -195,8 +215,8 @@ arWndProc(
 
 internal void
 arWindowCreate(
-    int32_t width,
-    int32_t height)
+    int width,
+    int height)
 {
     QueryPerformanceFrequency(&g.timeFrequency);
     QueryPerformanceCounter(&g.timeOffset);
@@ -236,6 +256,13 @@ arWindowCreate(
     BOOL useDarkMode = true;
     DwmSetWindowAttribute(g.hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDarkMode, sizeof(useDarkMode));
     ShowWindow(g.hwnd, SW_SHOW);
+
+    RAWINPUTDEVICE rid[1];
+    rid[0].usUsagePage = HID_USAGE_PAGE_GENERIC; 
+    rid[0].usUsage = HID_USAGE_GENERIC_MOUSE; 
+    rid[0].dwFlags = RIDEV_INPUTSINK;   
+    rid[0].hwndTarget = g.hwnd;
+    RegisterRawInputDevices(rid, 1, sizeof(rid[0]));
 }
 
 internal void
@@ -548,7 +575,7 @@ arContextCreate(void)
         vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         vulkan12Features.pNext = NULL;
         vulkan12Features.samplerMirrorClampToEdge = false;
-        vulkan12Features.drawIndirectCount = false;
+        vulkan12Features.drawIndirectCount = true;
         vulkan12Features.storageBuffer8BitAccess = false;
         vulkan12Features.uniformAndStorageBuffer8BitAccess = false;
         vulkan12Features.storagePushConstant8 = false;
@@ -556,19 +583,19 @@ arContextCreate(void)
         vulkan12Features.shaderSharedInt64Atomics = false;
         vulkan12Features.shaderFloat16 = false;
         vulkan12Features.shaderInt8 = false;
-        vulkan12Features.descriptorIndexing = false;
+        vulkan12Features.descriptorIndexing = true;
         vulkan12Features.shaderInputAttachmentArrayDynamicIndexing = false;
         vulkan12Features.shaderUniformTexelBufferArrayDynamicIndexing = false;
         vulkan12Features.shaderStorageTexelBufferArrayDynamicIndexing = false;
         vulkan12Features.shaderUniformBufferArrayNonUniformIndexing = false;
-        vulkan12Features.shaderSampledImageArrayNonUniformIndexing = false;
+        vulkan12Features.shaderSampledImageArrayNonUniformIndexing = true;
         vulkan12Features.shaderStorageBufferArrayNonUniformIndexing = false;
         vulkan12Features.shaderStorageImageArrayNonUniformIndexing = false;
         vulkan12Features.shaderInputAttachmentArrayNonUniformIndexing = false;
         vulkan12Features.shaderUniformTexelBufferArrayNonUniformIndexing = false;
         vulkan12Features.shaderStorageTexelBufferArrayNonUniformIndexing = false;
         vulkan12Features.descriptorBindingUniformBufferUpdateAfterBind = false;
-        vulkan12Features.descriptorBindingSampledImageUpdateAfterBind = false;
+        vulkan12Features.descriptorBindingSampledImageUpdateAfterBind = true;
         vulkan12Features.descriptorBindingStorageImageUpdateAfterBind = false;
         vulkan12Features.descriptorBindingStorageBufferUpdateAfterBind = false;
         vulkan12Features.descriptorBindingUniformTexelBufferUpdateAfterBind = false;
@@ -576,7 +603,7 @@ arContextCreate(void)
         vulkan12Features.descriptorBindingUpdateUnusedWhilePending = false;
         vulkan12Features.descriptorBindingPartiallyBound = true;
         vulkan12Features.descriptorBindingVariableDescriptorCount = false;
-        vulkan12Features.runtimeDescriptorArray = false;
+        vulkan12Features.runtimeDescriptorArray = true;
         vulkan12Features.samplerFilterMinmax = false;
         vulkan12Features.scalarBlockLayout = false;
         vulkan12Features.imagelessFramebuffer = false;
@@ -618,7 +645,7 @@ arContextCreate(void)
         features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
         features.pNext = &vulkan13Features;
         features.features.robustBufferAccess = false;
-        features.features.fullDrawIndexUint32 = false;
+        features.features.fullDrawIndexUint32 = true;
         features.features.imageCubeArray = false;
         features.features.independentBlend = false;
         features.features.geometryShader = false;
@@ -626,8 +653,8 @@ arContextCreate(void)
         features.features.sampleRateShading = false;
         features.features.dualSrcBlend = false;
         features.features.logicOp = false;
-        features.features.multiDrawIndirect = false;
-        features.features.drawIndirectFirstInstance = false;
+        features.features.multiDrawIndirect = true;
+        features.features.drawIndirectFirstInstance = true;
         features.features.depthClamp = false;
         features.features.depthBiasClamp = false;
         features.features.fillModeNonSolid = true;
@@ -961,7 +988,7 @@ arFindMemoryType(
 internal void
 arAllocBuffer(
     ArBuffer* pBuffer,
-    ArBool8 isDynamic)
+    bool isDynamic)
 {
     const VkBufferUsageFlags bufferUsage =
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -1068,7 +1095,7 @@ arCreateStaticBuffer(
 
 void
 arDestroyBuffer(
-    ArBuffer* pBuffer)
+    ArBuffer const* pBuffer)
 {
     if (pBuffer->pMapped)
     {
@@ -1296,7 +1323,7 @@ arUpdateImage(
 
 void
 arDestroyImage(
-    ArImage* pImage)
+    ArImage const* pImage)
 {
     vkDestroyImageView(g.device, pImage->handle.data[2], NULL);
     vkFreeMemory(g.device, pImage->handle.data[1], NULL);
@@ -1338,7 +1365,7 @@ arCreateShaderFromMemory(
 
 void
 arDestroyShader(
-    ArShader* pShader)
+    ArShader const* pShader)
 {
     vkDestroyShaderModule(g.device, pShader->handle.data, NULL);
 }
@@ -1509,7 +1536,7 @@ arCreateGraphicsPipeline(
 
 void
 arDestroyPipeline(
-    ArPipeline* pPipeline)
+    ArPipeline const* pPipeline)
 {
     vkDestroyPipeline(g.device, pPipeline->handle.data, NULL);
 }
@@ -1891,11 +1918,16 @@ arPollEvents(void)
     POINT cursorPos;
     GetPhysicalCursorPos(&cursorPos);
 
-    g.cursorDeltaX = (int32_t)cursorPos.x - g.cursorX;
-    g.cursorDeltaY = (int32_t)cursorPos.y - g.cursorY;
+    g.cursorDeltaX = cursorPos.x - g.globalCursorX;
+    g.cursorDeltaY = cursorPos.y - g.globalCursorY;
 
-    g.cursorX = (int32_t)cursorPos.x;
-    g.cursorY = (int32_t)cursorPos.y;
+    g.globalCursorX = cursorPos.x;
+    g.globalCursorY = cursorPos.y;
+
+    ScreenToClient(g.hwnd, &cursorPos);
+
+    g.cursorX = cursorPos.x;
+    g.cursorY = cursorPos.y;
 }
 
 void
@@ -1918,42 +1950,42 @@ arHideCursor(void)
 }
 
 void
-arSetCursorPosition(int32_t x, int32_t y)
+arSetCursorPosition(int x, int y)
 {
-    SetCursorPos((int)x, (int)y);
+    SetCursorPos(x, y);
 }
 
-ArBool8
+bool
 arIsKeyDown(ArKey key)
 {
     return(g.keys[key].isDown);
 }
 
-ArBool8
+bool
 arIsKeyPressed(ArKey key)
 {
     return(g.keys[key].isPressed);
 }
 
-ArBool8
+bool
 arIsKeyReleased(ArKey key)
 {
     return(g.keys[key].isReleased);
 }
 
-ArBool8
+bool
 arIsButtonDown(ArButton button)
 {
     return(g.buttons[button].isDown);
 }
 
-ArBool8
+bool
 arIsButtonPressed(ArButton button)
 {
     return(g.buttons[button].isPressed);
 }
 
-ArBool8
+bool
 arIsButtonReleased(ArButton button)
 {
     return(g.buttons[button].isReleased);
@@ -1967,7 +1999,7 @@ arGetTime(void)
 
     return (double)
         (value.QuadPart - g.timeOffset.QuadPart) /
-        g.timeFrequency.QuadPart;
+         g.timeFrequency.QuadPart;
 }
 
 double
@@ -2024,28 +2056,52 @@ arGetRenderAspectRatio(void)
     return(g.extent.width / (float)g.extent.height);
 }
 
-int32_t
+int
+arGetGlobalCursorX(void)
+{
+    return(g.globalCursorX);
+}
+
+int
+arGetGlobalCursorY(void)
+{
+    return(g.globalCursorY);
+}
+
+int
 arGetCursorX(void)
 {
     return(g.cursorX);
 }
 
-int32_t
+int
 arGetCursorY(void)
 {
     return(g.cursorY);
 }
 
-int32_t
+int
 arGetCursorDeltaX(void)
 {
     return(g.cursorDeltaX);
 }
 
-int32_t
+int
 arGetCursorDeltaY(void)
 {
     return(g.cursorDeltaY);
+}
+
+int
+arGetRelativeCursorX(void)
+{
+    return(g.cursorRelX);
+}
+
+int
+arGetRelativeCursorY(void)
+{
+    return(g.cursorRelY);
 }
 
 void

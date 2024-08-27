@@ -232,10 +232,10 @@ main()
     ArApplicationInfo const applicationInfo = {
         .pfnInit = init,
         .pfnTeardown = teardown,
-        .pfnUpdate = update,
-        .pfnUpdateResources = updateResources,
         .pfnResize = resize,
         .pfnRecordCommands = recordCommands,
+        .pfnUpdate = update,
+        .pfnUpdateResources = updateResources,
         .width = 1280,
         .height = 720,
         .enableVsync = false

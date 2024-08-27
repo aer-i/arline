@@ -38,14 +38,14 @@ init()
     arCreateStaticBuffer(&g.vertexBuffer, sizeof(vertices), vertices);
 
     ArBlendAttachment blend;
-    blend.blendEnable = AR_FALSE;
+    blend.blendEnable = false;
     blend.colorWriteMask = AR_COLOR_COMPONENT_RGBA_BITS;
 
     ArGraphicsPipelineCreateInfo pipelineCreateInfo;
     pipelineCreateInfo.blendAttachmentCount = 1;
     pipelineCreateInfo.pBlendAttachments = &blend;
-    pipelineCreateInfo.depthState.depthTestEnable = AR_FALSE;
-    pipelineCreateInfo.depthState.depthWriteEnable = AR_FALSE;
+    pipelineCreateInfo.depthState.depthTestEnable = false;
+    pipelineCreateInfo.depthState.depthWriteEnable = false;
     pipelineCreateInfo.depthState.compareOp = AR_COMPARE_OP_NEVER;
     pipelineCreateInfo.polygonMode = AR_POLYGON_MODE_FILL;
     pipelineCreateInfo.topology = AR_TOPOLOGY_TRIANGLE_STRIP;
@@ -121,13 +121,13 @@ main(void)
     ArApplicationInfo applicationInfo;
     applicationInfo.pfnInit = init;
     applicationInfo.pfnTeardown = teardown;
-    applicationInfo.pfnUpdate = update;
-    applicationInfo.pfnUpdateResources = updateResources;
     applicationInfo.pfnResize = resize;
     applicationInfo.pfnRecordCommands = recordCommands;
+    applicationInfo.pfnUpdate = update;
+    applicationInfo.pfnUpdateResources = updateResources;
     applicationInfo.width = 1280;
     applicationInfo.height = 720;
-    applicationInfo.enableVsync = AR_TRUE;
+    applicationInfo.enableVsync = true;
 
     arExecute(&applicationInfo);
     ExitProcess(0);
