@@ -1130,7 +1130,7 @@ arCreateImage(
     case AR_IMAGE_USAGE_TEXTURE:
         usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-        format = VK_FORMAT_B8G8R8A8_UNORM;
+        format = pImageCreateInfo->format;
         break;
     }
 
@@ -1206,27 +1206,15 @@ arCreateImage(
     imageViewCreateInfo.image = pImage->handle.data[0];
     imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     imageViewCreateInfo.format = format;
+    imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
     imageViewCreateInfo.subresourceRange.aspectMask = aspect;
     imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
     imageViewCreateInfo.subresourceRange.levelCount = 1;
     imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
     imageViewCreateInfo.subresourceRange.layerCount = 1;
-
-    if (pImageCreateInfo->usage != AR_IMAGE_USAGE_TEXTURE)
-    {
-        imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    }
-    else
-    {
-        imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_B;
-        imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
-        imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_R;
-        imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
-    }
-
     vkCreateImageView(g.device, &imageViewCreateInfo, NULL, (VkImageView*)&pImage->handle.data[2]);
 
     if (pImageCreateInfo->sampler)
@@ -1305,8 +1293,11 @@ arUpdateImage(
         region.imageExtent.width  = pImage->width;
         region.imageExtent.height = pImage->height;
         region.imageExtent.depth  = pImage->depth;
-        vkCmdCopyBufferToImage(g.transferCommandBuffer, stagingBuffer.handle.data[0], pImage->handle.data[0],
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        vkCmdCopyBufferToImage(g.transferCommandBuffer,
+                               stagingBuffer.handle.data[0],
+                               pImage->handle.data[0],
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               1, &region);
 
         imageMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
         imageMemoryBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;

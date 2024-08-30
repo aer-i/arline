@@ -20,6 +20,7 @@ init()
 
     ArImageCreateInfo imageCreateInfo;
     imageCreateInfo.usage = AR_IMAGE_USAGE_TEXTURE;
+    imageCreateInfo.format = AR_FORMAT_RGBA8_UNORM;
     imageCreateInfo.sampler = AR_SAMPLER_NEAREST_TO_EDGE;
     imageCreateInfo.dstArrayElement = 0;
     imageCreateInfo.width = 3;

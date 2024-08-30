@@ -207,6 +207,22 @@ typedef enum ArSampler {
     AR_SAMPLER_NEAREST_REPEAT               = 0x04
 } ArSampler;
 
+typedef enum ArFormat {
+    AR_FORMAT_UNDEFINED                     = 0x00,
+    AR_FORMAT_R8_UNORM                      = 0x09,
+    AR_FORMAT_R8_SNORM                      = 0x0a,
+    AR_FORMAT_R8_UINT                       = 0x0d,
+    AR_FORMAT_R8_SINT                       = 0x0e,
+    AR_FORMAT_RG8_UNORM                     = 0x10,
+    AR_FORMAT_RG8_SNORM                     = 0x11,
+    AR_FORMAT_RG8_UINT                      = 0x14,
+    AR_FORMAT_RG8_SINT                      = 0x15,
+    AR_FORMAT_RGBA8_UNORM                   = 0x25,
+    AR_FORMAT_RGBA8_SNORM                   = 0x26,
+    AR_FORMAT_RGBA8_UINT                    = 0x29,
+    AR_FORMAT_RGBA8_SINT                    = 0x2a
+} ArFormat;
+
 typedef enum ArCompareOp {
     AR_COMPARE_OP_NEVER                     = 0x00,
     AR_COMPARE_OP_LESS                      = 0x01,
@@ -338,6 +354,7 @@ typedef struct ArDepthState {
 
 typedef struct ArImageCreateInfo {
     ArImageUsage                            usage;
+    ArFormat                                format;
     ArSampler                               sampler;
     uint32_t                                dstArrayElement;
     uint32_t                                width;
