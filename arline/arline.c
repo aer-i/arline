@@ -237,10 +237,6 @@ arVkCheck(VkResult result)
         arError("Initialization failed");
     case VK_ERROR_INCOMPATIBLE_DRIVER:
         arError("Incompatible driver");
-    case VK_ERROR_LAYER_NOT_PRESENT:
-        arError("Required layer not present");
-    case VK_ERROR_EXTENSION_NOT_PRESENT:
-        arError("Required extension not present");
     case VK_ERROR_MEMORY_MAP_FAILED:
         arError("Memory map failed");
     default:
@@ -1121,7 +1117,7 @@ arContextCreate(void)
     }
     {
         VkPushConstantRange pushConstantRange;
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         pushConstantRange.offset = 0;
         pushConstantRange.size = 128;
 
@@ -1993,7 +1989,7 @@ arCmdPushConstants(
     g.vkCmdPushConstants(
         g.pFrame->cmd,
         g.pipelineLayout,
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        VK_SHADER_STAGE_VERTEX_BIT,
         offset,
         size,
         pValues);
@@ -2501,7 +2497,7 @@ arExecute(
         if (g.vkWaitForFences(g.device, 1, &g.fence, 0, UINT64_MAX) |
             g.vkResetFences(g.device, 1, &g.fence))
         {
-            arError("Failed to reset fences");
+            arError("Failed to sync");
         }
 
         switch (pApplicationInfo->pfnUpdateResources())
