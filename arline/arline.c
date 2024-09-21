@@ -3,12 +3,17 @@
 #define internal static
 #define global static
 #define VK_USE_PLATFORM_WIN32_KHR
+#define VK_NO_PROTOTYPES
 #define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <vulkan/vulkan.h>
-#include <hidusage.h>
-#include <dwmapi.h>
+#define VKAPI_ATTR
+#define VKAPI_CALL __stdcall
+#define VKAPI_PTR VKAPI_CALL
 #include <stdbool.h>
+#include <windows.h>
+#include <dwmapi.h>
+#include <hidusage.h>
+#include "vulkan/vulkan_core.h"
+#include "vulkan/vulkan_win32.h"
 
 typedef struct
 {
@@ -29,6 +34,101 @@ ArKeyInternal;
 
 struct
 {
+    PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
+    PFN_vkDestroyInstance vkDestroyInstance;
+    PFN_vkDestroyDescriptorPool vkDestroyDescriptorPool;
+    PFN_vkDestroyDescriptorSetLayout vkDestroyDescriptorSetLayout;
+    PFN_vkDestroyDevice vkDestroyDevice;
+    PFN_vkDestroyFence vkDestroyFence;
+    PFN_vkDestroyPipelineLayout vkDestroyPipelineLayout;
+    PFN_vkDestroySampler vkDestroySampler;
+    PFN_vkDestroySemaphore vkDestroySemaphore;
+
+    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
+    PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
+    PFN_vkEnumerateInstanceVersion vkEnumerateInstanceVersion;
+    PFN_vkCreateInstance vkCreateInstance;
+    PFN_vkCreateDevice vkCreateDevice;
+    PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
+    PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
+    PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
+    PFN_vkEnumerateDeviceExtensionProperties vkEnumerateDeviceExtensionProperties;
+    PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
+    PFN_vkGetPhysicalDeviceFormatProperties vkGetPhysicalDeviceFormatProperties;
+    PFN_vkGetPhysicalDeviceImageFormatProperties vkGetPhysicalDeviceImageFormatProperties;
+    PFN_vkGetPhysicalDeviceMemoryProperties vkGetPhysicalDeviceMemoryProperties;
+    PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties;
+    PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties;
+    PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
+    PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
+    PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
+    PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets;
+    PFN_vkCreateDescriptorPool vkCreateDescriptorPool;
+    PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout;
+    PFN_vkCreateFence vkCreateFence;
+    PFN_vkCreatePipelineLayout vkCreatePipelineLayout;
+    PFN_vkCreateSampler vkCreateSampler;
+    PFN_vkCreateSemaphore vkCreateSemaphore;
+    PFN_vkGetDeviceQueue vkGetDeviceQueue;
+
+    PFN_vkDestroyImage vkDestroyImage;
+    PFN_vkDestroyCommandPool vkDestroyCommandPool;
+    PFN_vkDestroyImageView vkDestroyImageView;
+    PFN_vkDestroyPipeline vkDestroyPipeline;
+    PFN_vkDestroyShaderModule vkDestroyShaderModule;
+    PFN_vkFreeMemory vkFreeMemory;
+    PFN_vkUnmapMemory vkUnmapMemory;
+    PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR;
+    PFN_vkDestroyBuffer vkDestroyBuffer;
+
+    PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers;
+    PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
+    PFN_vkAllocateMemory vkAllocateMemory;
+    PFN_vkBindImageMemory vkBindImageMemory;
+    PFN_vkBindBufferMemory vkBindBufferMemory;
+    PFN_vkCreateCommandPool vkCreateCommandPool;
+    PFN_vkCreateBuffer vkCreateBuffer;
+    PFN_vkCreateGraphicsPipelines vkCreateGraphicsPipelines;
+    PFN_vkCreateImage vkCreateImage;
+    PFN_vkCreateImageView vkCreateImageView;
+    PFN_vkCreateShaderModule vkCreateShaderModule;
+    PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR;
+    PFN_vkMapMemory vkMapMemory;
+    PFN_vkGetBufferMemoryRequirements vkGetBufferMemoryRequirements;
+    PFN_vkGetImageMemoryRequirements vkGetImageMemoryRequirements;
+    PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets;
+    PFN_vkGetBufferDeviceAddress vkGetBufferDeviceAddress;
+
+    PFN_vkBeginCommandBuffer vkBeginCommandBuffer;
+    PFN_vkCmdBindDescriptorSets vkCmdBindDescriptorSets;
+    PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer;
+    PFN_vkCmdBindPipeline vkCmdBindPipeline;
+    PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
+    PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage;
+    PFN_vkCmdDraw vkCmdDraw;
+    PFN_vkCmdDrawIndexed vkCmdDrawIndexed;
+    PFN_vkCmdDrawIndexedIndirect vkCmdDrawIndexedIndirect;
+    PFN_vkCmdDrawIndirect vkCmdDrawIndirect;
+    PFN_vkCmdPushConstants vkCmdPushConstants;
+    PFN_vkCmdSetScissor vkCmdSetScissor;
+    PFN_vkCmdSetViewport vkCmdSetViewport;
+    PFN_vkEndCommandBuffer vkEndCommandBuffer;
+    PFN_vkCmdDrawIndexedIndirectCount vkCmdDrawIndexedIndirectCount;
+    PFN_vkCmdDrawIndirectCount vkCmdDrawIndirectCount;
+    PFN_vkCmdBeginRendering vkCmdBeginRendering;
+    PFN_vkCmdEndRendering vkCmdEndRendering;
+    PFN_vkCmdPipelineBarrier2 vkCmdPipelineBarrier2;
+
+    PFN_vkResetCommandPool vkResetCommandPool;
+    PFN_vkDeviceWaitIdle vkDeviceWaitIdle;
+    PFN_vkQueueWaitIdle vkQueueWaitIdle;
+    
+    PFN_vkWaitForFences vkWaitForFences;
+    PFN_vkResetFences vkResetFences;
+    PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR;
+    PFN_vkQueueSubmit2 vkQueueSubmit2;
+    PFN_vkQueuePresentKHR vkQueuePresentKHR;
+
     void (*pfnUpdate)();
     void (*pfnResize)();
     void (*pfnRecordCommands)();
@@ -92,6 +192,11 @@ struct
 global g;
 
 internal uint32_t arFindMemoryType(uint32_t typeBitsRequirement, VkMemoryPropertyFlags properties);
+internal void* arLoadInstanceFunction(char const* name);
+internal void* arLoadDeviceFunction(char const* name);
+internal void arError(char const* message);
+internal void arLoadInstanceFunctions(void);
+internal void arLoadDeviceFunctions(void);
 internal void arAllocBuffer(ArBuffer* pBuffer, bool isDynamic);
 internal void arWindowCreate(int width, int height);
 internal void arWindowTeardown(void);
@@ -103,6 +208,154 @@ internal void arContextTeardown(void);
 internal void arRecordCommands(void);
 internal void arBeginTransfer();
 internal void arEndTransfer();
+
+internal void
+arError(
+    char const* message)
+{
+    MessageBoxA(NULL, message, NULL, MB_ICONERROR);
+    ExitProcess(1);
+}
+
+internal void
+arVkCheck(VkResult result)
+{
+    switch (result)
+    {
+    case VK_SUCCESS:
+    case VK_INCOMPLETE:
+        break;
+    case VK_ERROR_DEVICE_LOST:
+        arError("Device Lost");
+    case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+        arError("Out of device memory");
+    case VK_ERROR_OUT_OF_HOST_MEMORY:
+        arError("Out of host memory");
+    case VK_ERROR_SURFACE_LOST_KHR:
+        arError("Surface lost");
+    case VK_ERROR_INITIALIZATION_FAILED:
+        arError("Initialization failed");
+    case VK_ERROR_INCOMPATIBLE_DRIVER:
+        arError("Incompatible driver");
+    case VK_ERROR_LAYER_NOT_PRESENT:
+        arError("Required layer not present");
+    case VK_ERROR_EXTENSION_NOT_PRESENT:
+        arError("Required extension not present");
+    case VK_ERROR_MEMORY_MAP_FAILED:
+        arError("Memory map failed");
+    default:
+        arError("Unknown Vulkan Error");
+    }
+}
+
+internal void*
+arLoadInstanceFunction(
+    char const* name)
+{
+    return((void*)g.vkGetInstanceProcAddr(g.instance, name));
+}
+
+internal void*
+arLoadDeviceFunction(
+    char const* name)
+{
+    return((void*)g.vkGetDeviceProcAddr(g.device, name));
+}
+
+internal void
+arLoadInstanceFunctions(void)
+{
+    g.vkCreateDevice = (PFN_vkCreateDevice)arLoadInstanceFunction("vkCreateDevice");
+    g.vkDestroyInstance = (PFN_vkDestroyInstance)arLoadInstanceFunction("vkDestroyInstance");
+    g.vkEnumerateDeviceExtensionProperties = (PFN_vkEnumerateDeviceExtensionProperties)arLoadInstanceFunction("vkEnumerateDeviceExtensionProperties");
+    g.vkEnumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)arLoadInstanceFunction("vkEnumeratePhysicalDevices");
+    g.vkGetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)arLoadInstanceFunction("vkGetDeviceProcAddr");
+    g.vkGetPhysicalDeviceFeatures = (PFN_vkGetPhysicalDeviceFeatures)arLoadInstanceFunction("vkGetPhysicalDeviceFeatures");
+    g.vkGetPhysicalDeviceFormatProperties = (PFN_vkGetPhysicalDeviceFormatProperties)arLoadInstanceFunction("vkGetPhysicalDeviceFormatProperties");
+    g.vkGetPhysicalDeviceImageFormatProperties = (PFN_vkGetPhysicalDeviceImageFormatProperties)arLoadInstanceFunction("vkGetPhysicalDeviceImageFormatProperties");
+    g.vkGetPhysicalDeviceMemoryProperties = (PFN_vkGetPhysicalDeviceMemoryProperties)arLoadInstanceFunction("vkGetPhysicalDeviceMemoryProperties");
+    g.vkGetPhysicalDeviceProperties = (PFN_vkGetPhysicalDeviceProperties)arLoadInstanceFunction("vkGetPhysicalDeviceProperties");
+    g.vkGetPhysicalDeviceQueueFamilyProperties = (PFN_vkGetPhysicalDeviceQueueFamilyProperties)arLoadInstanceFunction("vkGetPhysicalDeviceQueueFamilyProperties");
+    g.vkCreateWin32SurfaceKHR = (PFN_vkCreateWin32SurfaceKHR)arLoadInstanceFunction("vkCreateWin32SurfaceKHR");
+    g.vkDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)arLoadInstanceFunction("vkDestroySurfaceKHR");
+    g.vkGetPhysicalDeviceSurfaceCapabilitiesKHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR)arLoadInstanceFunction("vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+    g.vkGetPhysicalDeviceSurfaceFormatsKHR = (PFN_vkGetPhysicalDeviceSurfaceFormatsKHR)arLoadInstanceFunction("vkGetPhysicalDeviceSurfaceFormatsKHR");
+    g.vkGetPhysicalDeviceSurfacePresentModesKHR = (PFN_vkGetPhysicalDeviceSurfacePresentModesKHR)arLoadInstanceFunction("vkGetPhysicalDeviceSurfacePresentModesKHR");
+    g.vkGetPhysicalDeviceSurfaceSupportKHR = (PFN_vkGetPhysicalDeviceSurfaceSupportKHR)arLoadInstanceFunction("vkGetPhysicalDeviceSurfaceSupportKHR");
+}
+
+internal void
+arLoadDeviceFunctions()
+{
+    g.vkAllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)arLoadDeviceFunction("vkAllocateCommandBuffers");
+    g.vkAllocateDescriptorSets = (PFN_vkAllocateDescriptorSets)arLoadDeviceFunction("vkAllocateDescriptorSets");
+    g.vkAllocateMemory = (PFN_vkAllocateMemory)arLoadDeviceFunction("vkAllocateMemory");
+    g.vkBeginCommandBuffer = (PFN_vkBeginCommandBuffer)arLoadDeviceFunction("vkBeginCommandBuffer");
+    g.vkBindBufferMemory = (PFN_vkBindBufferMemory)arLoadDeviceFunction("vkBindBufferMemory");
+    g.vkBindImageMemory = (PFN_vkBindImageMemory)arLoadDeviceFunction("vkBindImageMemory");
+    g.vkCmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets)arLoadDeviceFunction("vkCmdBindDescriptorSets");
+    g.vkCmdBindIndexBuffer = (PFN_vkCmdBindIndexBuffer)arLoadDeviceFunction("vkCmdBindIndexBuffer");
+    g.vkCmdBindPipeline = (PFN_vkCmdBindPipeline)arLoadDeviceFunction("vkCmdBindPipeline");
+    g.vkCmdCopyBuffer = (PFN_vkCmdCopyBuffer)arLoadDeviceFunction("vkCmdCopyBuffer");
+    g.vkCmdCopyBufferToImage = (PFN_vkCmdCopyBufferToImage)arLoadDeviceFunction("vkCmdCopyBufferToImage");
+    g.vkCmdDraw = (PFN_vkCmdDraw)arLoadDeviceFunction("vkCmdDraw");
+    g.vkCmdDrawIndexed = (PFN_vkCmdDrawIndexed)arLoadDeviceFunction("vkCmdDrawIndexed");
+    g.vkCmdDrawIndexedIndirect = (PFN_vkCmdDrawIndexedIndirect)arLoadDeviceFunction("vkCmdDrawIndexedIndirect");
+    g.vkCmdDrawIndirect = (PFN_vkCmdDrawIndirect)arLoadDeviceFunction("vkCmdDrawIndirect");
+    g.vkCmdPushConstants = (PFN_vkCmdPushConstants)arLoadDeviceFunction("vkCmdPushConstants");
+    g.vkCmdSetScissor = (PFN_vkCmdSetScissor)arLoadDeviceFunction("vkCmdSetScissor");
+    g.vkCmdSetViewport = (PFN_vkCmdSetViewport)arLoadDeviceFunction("vkCmdSetViewport");
+    g.vkCreateBuffer = (PFN_vkCreateBuffer)arLoadDeviceFunction("vkCreateBuffer");
+    g.vkCreateCommandPool = (PFN_vkCreateCommandPool)arLoadDeviceFunction("vkCreateCommandPool");
+    g.vkCreateDescriptorPool = (PFN_vkCreateDescriptorPool)arLoadDeviceFunction("vkCreateDescriptorPool");
+    g.vkCreateDescriptorSetLayout = (PFN_vkCreateDescriptorSetLayout)arLoadDeviceFunction("vkCreateDescriptorSetLayout");
+    g.vkCreateFence = (PFN_vkCreateFence)arLoadDeviceFunction("vkCreateFence");
+    g.vkCreateGraphicsPipelines = (PFN_vkCreateGraphicsPipelines)arLoadDeviceFunction("vkCreateGraphicsPipelines");
+    g.vkCreateImage = (PFN_vkCreateImage)arLoadDeviceFunction("vkCreateImage");
+    g.vkCreateImageView = (PFN_vkCreateImageView)arLoadDeviceFunction("vkCreateImageView");
+    g.vkCreatePipelineLayout = (PFN_vkCreatePipelineLayout)arLoadDeviceFunction("vkCreatePipelineLayout");
+    g.vkCreateSampler = (PFN_vkCreateSampler)arLoadDeviceFunction("vkCreateSampler");
+    g.vkCreateSemaphore = (PFN_vkCreateSemaphore)arLoadDeviceFunction("vkCreateSemaphore");
+    g.vkCreateShaderModule = (PFN_vkCreateShaderModule)arLoadDeviceFunction("vkCreateShaderModule");
+    g.vkDestroyBuffer = (PFN_vkDestroyBuffer)arLoadDeviceFunction("vkDestroyBuffer");
+    g.vkDestroyCommandPool = (PFN_vkDestroyCommandPool)arLoadDeviceFunction("vkDestroyCommandPool");
+    g.vkDestroyDescriptorPool = (PFN_vkDestroyDescriptorPool)arLoadDeviceFunction("vkDestroyDescriptorPool");
+    g.vkDestroyDescriptorSetLayout = (PFN_vkDestroyDescriptorSetLayout)arLoadDeviceFunction("vkDestroyDescriptorSetLayout");
+    g.vkDestroyDevice = (PFN_vkDestroyDevice)arLoadDeviceFunction("vkDestroyDevice");
+    g.vkDestroyFence = (PFN_vkDestroyFence)arLoadDeviceFunction("vkDestroyFence");
+    g.vkDestroyImage = (PFN_vkDestroyImage)arLoadDeviceFunction("vkDestroyImage");
+    g.vkDestroyImageView = (PFN_vkDestroyImageView)arLoadDeviceFunction("vkDestroyImageView");
+    g.vkDestroyPipeline = (PFN_vkDestroyPipeline)arLoadDeviceFunction("vkDestroyPipeline");
+    g.vkDestroyPipelineLayout = (PFN_vkDestroyPipelineLayout)arLoadDeviceFunction("vkDestroyPipelineLayout");
+    g.vkDestroySampler = (PFN_vkDestroySampler)arLoadDeviceFunction("vkDestroySampler");
+    g.vkDestroySemaphore = (PFN_vkDestroySemaphore)arLoadDeviceFunction("vkDestroySemaphore");
+    g.vkDestroyShaderModule = (PFN_vkDestroyShaderModule)arLoadDeviceFunction("vkDestroyShaderModule");
+    g.vkDeviceWaitIdle = (PFN_vkDeviceWaitIdle)arLoadDeviceFunction("vkDeviceWaitIdle");
+    g.vkEndCommandBuffer = (PFN_vkEndCommandBuffer)arLoadDeviceFunction("vkEndCommandBuffer");
+    g.vkFreeMemory = (PFN_vkFreeMemory)arLoadDeviceFunction("vkFreeMemory");
+    g.vkGetBufferMemoryRequirements = (PFN_vkGetBufferMemoryRequirements)arLoadDeviceFunction("vkGetBufferMemoryRequirements");
+    g.vkGetDeviceQueue = (PFN_vkGetDeviceQueue)arLoadDeviceFunction("vkGetDeviceQueue");
+    g.vkGetImageMemoryRequirements = (PFN_vkGetImageMemoryRequirements)arLoadDeviceFunction("vkGetImageMemoryRequirements");
+    g.vkMapMemory = (PFN_vkMapMemory)arLoadDeviceFunction("vkMapMemory");
+    g.vkQueueWaitIdle = (PFN_vkQueueWaitIdle)arLoadDeviceFunction("vkQueueWaitIdle");
+    g.vkResetCommandPool = (PFN_vkResetCommandPool)arLoadDeviceFunction("vkResetCommandPool");
+    g.vkResetFences = (PFN_vkResetFences)arLoadDeviceFunction("vkResetFences");
+    g.vkUnmapMemory = (PFN_vkUnmapMemory)arLoadDeviceFunction("vkUnmapMemory");
+    g.vkUpdateDescriptorSets = (PFN_vkUpdateDescriptorSets)arLoadDeviceFunction("vkUpdateDescriptorSets");
+    g.vkWaitForFences = (PFN_vkWaitForFences)arLoadDeviceFunction("vkWaitForFences");
+    g.vkCmdDrawIndexedIndirectCount = (PFN_vkCmdDrawIndexedIndirectCount)arLoadDeviceFunction("vkCmdDrawIndexedIndirectCount");
+    g.vkCmdDrawIndirectCount = (PFN_vkCmdDrawIndirectCount)arLoadDeviceFunction("vkCmdDrawIndirectCount");
+    g.vkGetBufferDeviceAddress = (PFN_vkGetBufferDeviceAddress)arLoadDeviceFunction("vkGetBufferDeviceAddress");
+    g.vkCmdBeginRendering = (PFN_vkCmdBeginRendering)arLoadDeviceFunction("vkCmdBeginRendering");
+    g.vkCmdEndRendering = (PFN_vkCmdEndRendering)arLoadDeviceFunction("vkCmdEndRendering");
+    g.vkCmdPipelineBarrier2 = (PFN_vkCmdPipelineBarrier2)arLoadDeviceFunction("vkCmdPipelineBarrier2");
+    g.vkQueueSubmit2 = (PFN_vkQueueSubmit2)arLoadDeviceFunction("vkQueueSubmit2");
+    g.vkAcquireNextImageKHR = (PFN_vkAcquireNextImageKHR)arLoadDeviceFunction("vkAcquireNextImageKHR");
+    g.vkCreateSwapchainKHR = (PFN_vkCreateSwapchainKHR)arLoadDeviceFunction("vkCreateSwapchainKHR");
+    g.vkDestroySwapchainKHR = (PFN_vkDestroySwapchainKHR)arLoadDeviceFunction("vkDestroySwapchainKHR");
+    g.vkGetSwapchainImagesKHR = (PFN_vkGetSwapchainImagesKHR)arLoadDeviceFunction("vkGetSwapchainImagesKHR");
+    g.vkQueuePresentKHR = (PFN_vkQueuePresentKHR)arLoadDeviceFunction("vkQueuePresentKHR");
+}
 
 internal LRESULT
 arWndProc(
@@ -149,12 +402,12 @@ arWndProc(
     case WM_SYSKEYDOWN:
         g.keys[wp].isDown = true;
         g.keys[wp].isPressed = !(lp & (1 << 30));
-        break;
+        return(DefWindowProcA(hwnd, msg, wp, lp));
     case WM_KEYUP:
     case WM_SYSKEYUP:
         g.keys[wp].isDown = false;
         g.keys[wp].isReleased = true;
-        break;
+        return(DefWindowProcA(hwnd, msg, wp, lp));
     case WM_INPUT:
     {
         UINT dwSize = sizeof(RAWINPUT);
@@ -163,7 +416,7 @@ arWndProc(
 
         RAWINPUT* raw = (RAWINPUT*)g.lpb;
 
-        if (!raw->header.dwType /* == RIM_TYPEMOUSE */)
+        if (raw->header.dwType == RIM_TYPEMOUSE)
         {
             g.cursorRelX = raw->data.mouse.lLastX;
             g.cursorRelY = raw->data.mouse.lLastY;
@@ -185,7 +438,7 @@ arWndProc(
 
         if (g.device)
         {
-            vkDeviceWaitIdle(g.device);
+            g.vkDeviceWaitIdle(g.device);
             arSwapchainRecreate(g.vsyncEnabled);
         }
         break;
@@ -237,7 +490,10 @@ arWindowCreate(
     wc.hIconSm = NULL;
 
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    RegisterClassExA(&wc);
+    if (!RegisterClassExA(&wc))
+    {
+        arError("Failed to register window class");
+    }
 
     g.hwnd = CreateWindowExA(
         WS_EX_DLGMODALFRAME,
@@ -252,6 +508,11 @@ arWindowCreate(
         NULL,
         g.hinstance,
         NULL);
+
+    if (!g.hwnd)
+    {
+        arError("Failed to create window");
+    }
 
     BOOL useDarkMode = true;
     DwmSetWindowAttribute(g.hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDarkMode, sizeof(useDarkMode));
@@ -273,12 +534,13 @@ arWindowTeardown(void)
 }
 
 internal void
-arSwapchainCreate(bool vsync)
+arSwapchainCreate(
+    bool vsync)
 {
     g.vsyncEnabled = vsync;
 
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g.gpu, g.surface, &surfaceCapabilities);
+    arVkCheck(g.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g.gpu, g.surface, &surfaceCapabilities));
 
     g.extent.width  = surfaceCapabilities.currentExtent.width;
     g.extent.height = surfaceCapabilities.currentExtent.height;
@@ -287,6 +549,31 @@ arSwapchainCreate(bool vsync)
     {
         g.extent.width  = surfaceCapabilities.minImageExtent.width;
         g.extent.height = surfaceCapabilities.minImageExtent.height;
+    }
+
+    VkPresentModeKHR presentModes[6];
+    uint32_t presentModeCount;
+    arVkCheck(g.vkGetPhysicalDeviceSurfacePresentModesKHR(g.gpu, g.surface, &presentModeCount, NULL));
+    presentModeCount = min(presentModeCount, 6);
+    arVkCheck(g.vkGetPhysicalDeviceSurfacePresentModesKHR(g.gpu, g.surface, &presentModeCount, NULL));
+
+    VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
+
+    if (vsync)
+    {
+        for ( ; presentModeCount--; )
+        {
+            if (presentModes[presentModeCount] == VK_PRESENT_MODE_MAILBOX_KHR)
+            {
+                presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+                break;
+            }
+
+            if (presentModes[presentModeCount] == VK_PRESENT_MODE_IMMEDIATE_KHR)
+            {
+                presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+            }
+        }
     }
 
     VkSwapchainCreateInfoKHR swapchainCreateInfo;
@@ -304,23 +591,24 @@ arSwapchainCreate(bool vsync)
     swapchainCreateInfo.queueFamilyIndexCount = 0;
     swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapchainCreateInfo.presentMode = vsync ? VK_PRESENT_MODE_FIFO_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
+    swapchainCreateInfo.presentMode = presentMode;
     swapchainCreateInfo.clipped = true;
     swapchainCreateInfo.oldSwapchain = NULL;
-    vkCreateSwapchainKHR(g.device, &swapchainCreateInfo, NULL, &g.swapchain);
+    arVkCheck(g.vkCreateSwapchainKHR(g.device, &swapchainCreateInfo, NULL, &g.swapchain));
 
     VkCommandBuffer commandBuffers[6];
     VkCommandBuffer presentCommandBuffers[6];
     VkImage swapchainImages[6];
-    vkGetSwapchainImagesKHR(g.device, g.swapchain, &g.imageCount, NULL);
-    vkGetSwapchainImagesKHR(g.device, g.swapchain, &g.imageCount, swapchainImages);
+    arVkCheck(g.vkGetSwapchainImagesKHR(g.device, g.swapchain, &g.imageCount, NULL));
+    g.imageCount = min(g.imageCount, 6);
+    arVkCheck(g.vkGetSwapchainImagesKHR(g.device, g.swapchain, &g.imageCount, swapchainImages));
 
     VkCommandPoolCreateInfo commandPoolCreateInfo;
     commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     commandPoolCreateInfo.pNext = NULL;
     commandPoolCreateInfo.flags = 0;
     commandPoolCreateInfo.queueFamilyIndex = g.graphicsQueueFamily;
-    vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.graphicsCommandPool);
+    arVkCheck(g.vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.graphicsCommandPool));
 
     VkCommandBufferAllocateInfo commandBufferAllocateInfo;
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -328,15 +616,15 @@ arSwapchainCreate(bool vsync)
     commandBufferAllocateInfo.commandPool = g.graphicsCommandPool;
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     commandBufferAllocateInfo.commandBufferCount = g.imageCount;
-    vkAllocateCommandBuffers(g.device, &commandBufferAllocateInfo, commandBuffers);
+    arVkCheck(g.vkAllocateCommandBuffers(g.device, &commandBufferAllocateInfo, commandBuffers));
 
     if (!g.unifiedQueue)
     {
         commandPoolCreateInfo.queueFamilyIndex = g.presentQueueFamily;
-        vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.presentCommandPool);
+        arVkCheck(g.vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.presentCommandPool));
         
         commandBufferAllocateInfo.commandPool = g.presentCommandPool;
-        vkAllocateCommandBuffers(g.device, &commandBufferAllocateInfo, presentCommandBuffers);
+        arVkCheck(g.vkAllocateCommandBuffers(g.device, &commandBufferAllocateInfo, presentCommandBuffers));
     }
 
     for (uint32_t i = g.imageCount; i--; )
@@ -361,7 +649,7 @@ arSwapchainCreate(bool vsync)
         imageViewCreateInfo.subresourceRange.levelCount = 1;
         imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
         imageViewCreateInfo.subresourceRange.layerCount = 1;
-        vkCreateImageView(g.device, &imageViewCreateInfo, NULL, &g.frames[i].view);
+        arVkCheck(g.vkCreateImageView(g.device, &imageViewCreateInfo, NULL, &g.frames[i].view));
 
         if (!g.unifiedQueue)
         {
@@ -398,9 +686,9 @@ arSwapchainCreate(bool vsync)
             dependencyInfo.imageMemoryBarrierCount = 1;
             dependencyInfo.pImageMemoryBarriers = &imageMemoryBarrier;
 
-            vkBeginCommandBuffer(presentCommandBuffers[i], &commandBufferBeginInfo);
-            vkCmdPipelineBarrier2(presentCommandBuffers[i], &dependencyInfo);
-            vkEndCommandBuffer(presentCommandBuffers[i]);
+            arVkCheck(g.vkBeginCommandBuffer(presentCommandBuffers[i], &commandBufferBeginInfo));
+            g.vkCmdPipelineBarrier2(presentCommandBuffers[i], &dependencyInfo);
+            arVkCheck(g.vkEndCommandBuffer(presentCommandBuffers[i]));
         }
     }
 
@@ -439,16 +727,16 @@ arSwapchainTeardown(void)
 {
     for (uint32_t i = g.imageCount; i--; )
     {
-        vkDestroyImageView(g.device, g.frames[i].view, NULL);
+        g.vkDestroyImageView(g.device, g.frames[i].view, NULL);
     }
 
     if (!g.unifiedQueue)
     {
-        vkDestroyCommandPool(g.device, g.presentCommandPool, NULL);
+        g.vkDestroyCommandPool(g.device, g.presentCommandPool, NULL);
     }
 
-    vkDestroyCommandPool(g.device, g.graphicsCommandPool, NULL);
-    vkDestroySwapchainKHR(g.device, g.swapchain, NULL);
+    g.vkDestroyCommandPool(g.device, g.graphicsCommandPool, NULL);
+    g.vkDestroySwapchainKHR(g.device, g.swapchain, NULL);
 }
 
 internal void
@@ -472,6 +760,26 @@ internal void
 arContextCreate(void)
 {
     {
+        HMODULE vulkanDll = LoadLibraryA("vulkan-1.dll");
+
+        if (!vulkanDll)
+        {
+            arError("Failed to load vulkan-1.dll");
+        }
+
+        g.vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)GetProcAddress(vulkanDll, "vkGetInstanceProcAddr");
+        g.vkCreateInstance = (PFN_vkCreateInstance)g.vkGetInstanceProcAddr(NULL, "vkCreateInstance");
+        g.vkEnumerateInstanceVersion = (PFN_vkEnumerateInstanceVersion)g.vkGetInstanceProcAddr(NULL, "vkEnumerateInstanceVersion");
+    }
+    {
+        uint32_t apiVersion;
+        arVkCheck(g.vkEnumerateInstanceVersion(&apiVersion));
+
+        if (apiVersion < VK_API_VERSION_1_3)
+        {
+            arError("Vulkan 1.3 required");
+        }
+
         char const* instanceExtensions[2];
         instanceExtensions[0] = VK_KHR_SURFACE_EXTENSION_NAME;
         instanceExtensions[1] = VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
@@ -483,7 +791,7 @@ arContextCreate(void)
         applicationInfo.engineVersion = 0;
         applicationInfo.pEngineName = "arline";
         applicationInfo.pApplicationName = "arline";
-        applicationInfo.apiVersion = VK_API_VERSION_1_3;
+        applicationInfo.apiVersion = apiVersion;
 
         VkInstanceCreateInfo instanceCreateInfo;
         instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -493,7 +801,8 @@ arContextCreate(void)
         instanceCreateInfo.enabledExtensionCount = 2;
         instanceCreateInfo.ppEnabledExtensionNames = instanceExtensions;
         instanceCreateInfo.enabledLayerCount = 0;
-        vkCreateInstance(&instanceCreateInfo, NULL, &g.instance);
+        arVkCheck(g.vkCreateInstance(&instanceCreateInfo, NULL, &g.instance));
+        arLoadInstanceFunctions();
     }
     {
         VkWin32SurfaceCreateInfoKHR surfaceCreateInfo;
@@ -502,48 +811,63 @@ arContextCreate(void)
         surfaceCreateInfo.flags = 0;
         surfaceCreateInfo.hinstance = g.hinstance;
         surfaceCreateInfo.hwnd = g.hwnd;
-        vkCreateWin32SurfaceKHR(g.instance, &surfaceCreateInfo, NULL, &g.surface);
+        arVkCheck(g.vkCreateWin32SurfaceKHR(g.instance, &surfaceCreateInfo, NULL, &g.surface));
     }
     {
         VkPhysicalDevice gpus[64];
         uint32_t gpuCount;
-        vkEnumeratePhysicalDevices(g.instance, &gpuCount, NULL);
-        vkEnumeratePhysicalDevices(g.instance, &gpuCount, gpus);
+        arVkCheck(g.vkEnumeratePhysicalDevices(g.instance, &gpuCount, NULL));
+        gpuCount = min(gpuCount, 64);
+        arVkCheck(g.vkEnumeratePhysicalDevices(g.instance, &gpuCount, gpus));
 
-        g.gpu = gpus[0];
+        for ( ; gpuCount--; )
+        {
+            VkPhysicalDeviceProperties properties;
+            g.vkGetPhysicalDeviceProperties(gpus[gpuCount], &properties);
+
+            if (properties.apiVersion < VK_API_VERSION_1_3)
+            {
+                continue;
+            }
+
+            g.gpu = gpus[gpuCount];
+        }
+
+        if (!g.gpu)
+        {
+            arError("No suitable gpu. Try updating drivers");
+        }
 
         VkQueueFamilyProperties queueProperties[32];
         uint32_t queuePropertyCount;
-        vkGetPhysicalDeviceQueueFamilyProperties(g.gpu, &queuePropertyCount, NULL);
-        vkGetPhysicalDeviceQueueFamilyProperties(g.gpu, &queuePropertyCount, queueProperties);
+        g.vkGetPhysicalDeviceQueueFamilyProperties(g.gpu, &queuePropertyCount, NULL);
+        queuePropertyCount = min(queuePropertyCount, 32);
+        g.vkGetPhysicalDeviceQueueFamilyProperties(g.gpu, &queuePropertyCount, queueProperties);
 
         g.graphicsQueueFamily = ~0u;
         g.presentQueueFamily  = ~0u;
 
-        for (uint32_t i = queuePropertyCount; i--; )
-        {
-            if (queueProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-            {
-                g.graphicsQueueFamily = i;
-            }
-        }
-
-        for (uint32_t i = queuePropertyCount; i--; )
+        for ( ; queuePropertyCount--; )
         {
             VkBool32 presentSupported;
-            vkGetPhysicalDeviceSurfaceSupportKHR(
+            arVkCheck(g.vkGetPhysicalDeviceSurfaceSupportKHR(
                 g.gpu,
-                i,
+                queuePropertyCount,
                 g.surface,
-                &presentSupported);
-            
-            if (presentSupported && i != g.graphicsQueueFamily)
+                &presentSupported));
+
+            if ((g.graphicsQueueFamily & ~0u) & (queueProperties[queuePropertyCount].queueFlags & VK_QUEUE_GRAPHICS_BIT))
             {
-                g.presentQueueFamily = i;
+                g.graphicsQueueFamily = queuePropertyCount;
+            }
+            
+            if (presentSupported & (queuePropertyCount != g.graphicsQueueFamily))
+            {
+                g.presentQueueFamily = queuePropertyCount;
             }
         }
 
-        if (g.presentQueueFamily == ~0u)
+        if (g.presentQueueFamily & ~0u)
         {
             g.presentQueueFamily = g.graphicsQueueFamily;
             g.unifiedQueue = true;
@@ -710,9 +1034,11 @@ arContextCreate(void)
         deviceCreateInfo.enabledExtensionCount = 1;
         deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
         deviceCreateInfo.pEnabledFeatures = NULL;
-        vkCreateDevice(g.gpu, &deviceCreateInfo, NULL, &g.device);
-        vkGetDeviceQueue(g.device, g.graphicsQueueFamily, 0, &g.graphicsQueue);
-        vkGetDeviceQueue(g.device, g.presentQueueFamily,  0, &g.presentQueue);
+        arVkCheck(g.vkCreateDevice(g.gpu, &deviceCreateInfo, NULL, &g.device));
+        arLoadDeviceFunctions();
+
+        g.vkGetDeviceQueue(g.device, g.graphicsQueueFamily, 0, &g.graphicsQueue);
+        g.vkGetDeviceQueue(g.device, g.presentQueueFamily,  0, &g.presentQueue);
     }
     {
         VkCommandPoolCreateInfo commandPoolCreateInfo;
@@ -720,7 +1046,7 @@ arContextCreate(void)
         commandPoolCreateInfo.pNext = NULL;
         commandPoolCreateInfo.flags = 0;
         commandPoolCreateInfo.queueFamilyIndex = g.graphicsQueueFamily;
-        vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.transferCommandPool);
+        arVkCheck(g.vkCreateCommandPool(g.device, &commandPoolCreateInfo, NULL, &g.transferCommandPool));
 
         VkCommandBufferAllocateInfo commandBufferAllocateInfo;
         commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -728,7 +1054,7 @@ arContextCreate(void)
         commandBufferAllocateInfo.commandPool = g.transferCommandPool;
         commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         commandBufferAllocateInfo.commandBufferCount = 1;
-        vkAllocateCommandBuffers(g.device, &commandBufferAllocateInfo, &g.transferCommandBuffer);
+        arVkCheck(g.vkAllocateCommandBuffers(g.device, &commandBufferAllocateInfo, &g.transferCommandBuffer));
     }
     {
         VkSemaphoreCreateInfo semaphoreCreateInfo;
@@ -737,15 +1063,15 @@ arContextCreate(void)
         semaphoreCreateInfo.flags = 0;
 
         if (!g.unifiedQueue)
-        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.preSemaphore.semaphore);
-        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.acqSemaphore.semaphore);
-        vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.renSemaphore.semaphore);
+        arVkCheck(g.vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.preSemaphore.semaphore));
+        arVkCheck(g.vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.acqSemaphore.semaphore));
+        arVkCheck(g.vkCreateSemaphore(g.device, &semaphoreCreateInfo, NULL, &g.renSemaphore.semaphore));
 
         VkFenceCreateInfo fenceCreateInfo;
         fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceCreateInfo.pNext = NULL;
         fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-        vkCreateFence(g.device, &fenceCreateInfo, NULL, &g.fence);
+        arVkCheck(g.vkCreateFence(g.device, &fenceCreateInfo, NULL, &g.fence));
     }
     {
         VkDescriptorPoolSize poolSizes[1];
@@ -759,7 +1085,7 @@ arContextCreate(void)
         descriptorPoolCreateInfo.maxSets = 1;
         descriptorPoolCreateInfo.poolSizeCount = 1;
         descriptorPoolCreateInfo.pPoolSizes = poolSizes;
-        vkCreateDescriptorPool(g.device, &descriptorPoolCreateInfo, NULL, &g.descriptorPool);
+        arVkCheck(g.vkCreateDescriptorPool(g.device, &descriptorPoolCreateInfo, NULL, &g.descriptorPool));
 
         VkDescriptorBindingFlags bindingFlags[1];
         bindingFlags[0] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
@@ -783,7 +1109,7 @@ arContextCreate(void)
         descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
         descriptorSetLayoutCreateInfo.bindingCount = 1;
         descriptorSetLayoutCreateInfo.pBindings = bindings;
-        vkCreateDescriptorSetLayout(g.device, &descriptorSetLayoutCreateInfo, NULL, &g.descriptorSetLayout);
+        arVkCheck(g.vkCreateDescriptorSetLayout(g.device, &descriptorSetLayoutCreateInfo, NULL, &g.descriptorSetLayout));
 
         VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
         descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -791,7 +1117,7 @@ arContextCreate(void)
         descriptorSetAllocateInfo.descriptorPool = g.descriptorPool;
         descriptorSetAllocateInfo.descriptorSetCount = 1;
         descriptorSetAllocateInfo.pSetLayouts = &g.descriptorSetLayout;
-        vkAllocateDescriptorSets(g.device, &descriptorSetAllocateInfo, &g.descriptorSet);
+        arVkCheck(g.vkAllocateDescriptorSets(g.device, &descriptorSetAllocateInfo, &g.descriptorSet));
     }
     {
         VkPushConstantRange pushConstantRange;
@@ -807,7 +1133,7 @@ arContextCreate(void)
         pipelineLayoutCreateInfo.pSetLayouts = &g.descriptorSetLayout;
         pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
         pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
-        vkCreatePipelineLayout(g.device, &pipelineLayoutCreateInfo, NULL, &g.pipelineLayout);
+        arVkCheck(g.vkCreatePipelineLayout(g.device, &pipelineLayoutCreateInfo, NULL, &g.pipelineLayout));
     }
     {
         VkSamplerCreateInfo samplerCreateInfo;
@@ -828,22 +1154,22 @@ arContextCreate(void)
         samplerCreateInfo.minLod = 0.0f;
         samplerCreateInfo.maxLod = VK_LOD_CLAMP_NONE;
         samplerCreateInfo.unnormalizedCoordinates = false;
-        vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerLinearToEdge);
+        arVkCheck(g.vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerLinearToEdge));
 
         samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerLinearRepeat);
+        arVkCheck(g.vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerLinearRepeat));
 
         samplerCreateInfo.magFilter = VK_FILTER_NEAREST;
         samplerCreateInfo.minFilter = VK_FILTER_NEAREST;
         samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-        vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerNearestRepeat);
+        arVkCheck(g.vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerNearestRepeat));
 
         samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerNearestToEdge);
+        arVkCheck(g.vkCreateSampler(g.device, &samplerCreateInfo, NULL, &g.samplerNearestToEdge));
     }
     {
         arSwapchainCreate(g.vsyncEnabled);
@@ -884,29 +1210,29 @@ arContextTeardown(void)
 
     if (!g.unifiedQueue)
     {
-        vkDestroySemaphore(g.device, g.preSemaphore.semaphore, NULL);
+        g.vkDestroySemaphore(g.device, g.preSemaphore.semaphore, NULL);
     }
     
-    vkDestroyPipelineLayout(g.device, g.pipelineLayout, NULL);
-    vkDestroySampler(g.device, g.samplerNearestRepeat, NULL);
-    vkDestroySampler(g.device, g.samplerNearestToEdge, NULL);
-    vkDestroySampler(g.device, g.samplerLinearRepeat, NULL);
-    vkDestroySampler(g.device, g.samplerLinearToEdge, NULL);
-    vkDestroyDescriptorSetLayout(g.device, g.descriptorSetLayout, NULL);
-    vkDestroyDescriptorPool(g.device, g.descriptorPool, NULL);
-    vkDestroyFence(g.device, g.fence, NULL);
-    vkDestroySemaphore(g.device, g.renSemaphore.semaphore, NULL);
-    vkDestroySemaphore(g.device, g.acqSemaphore.semaphore, NULL);
-    vkDestroyCommandPool(g.device, g.transferCommandPool, NULL);
-    vkDestroyDevice(g.device, NULL);
-    vkDestroySurfaceKHR(g.instance, g.surface, NULL);
-    vkDestroyInstance(g.instance, NULL);
+    g.vkDestroyPipelineLayout(g.device, g.pipelineLayout, NULL);
+    g.vkDestroySampler(g.device, g.samplerNearestRepeat, NULL);
+    g.vkDestroySampler(g.device, g.samplerNearestToEdge, NULL);
+    g.vkDestroySampler(g.device, g.samplerLinearRepeat, NULL);
+    g.vkDestroySampler(g.device, g.samplerLinearToEdge, NULL);
+    g.vkDestroyDescriptorSetLayout(g.device, g.descriptorSetLayout, NULL);
+    g.vkDestroyDescriptorPool(g.device, g.descriptorPool, NULL);
+    g.vkDestroyFence(g.device, g.fence, NULL);
+    g.vkDestroySemaphore(g.device, g.renSemaphore.semaphore, NULL);
+    g.vkDestroySemaphore(g.device, g.acqSemaphore.semaphore, NULL);
+    g.vkDestroyCommandPool(g.device, g.transferCommandPool, NULL);
+    g.vkDestroyDevice(g.device, NULL);
+    g.vkDestroySurfaceKHR(g.instance, g.surface, NULL);
+    g.vkDestroyInstance(g.instance, NULL);
 }
 
 internal void
 arRecordCommands(void)
 {
-    vkResetCommandPool(g.device, g.graphicsCommandPool, 0);
+    arVkCheck(g.vkResetCommandPool(g.device, g.graphicsCommandPool, 0));
 
     for (uint32_t i = g.imageCount; i--; )
     {
@@ -918,31 +1244,32 @@ arRecordCommands(void)
 
         g.pFrame = &g.frames[i];
 
-        vkBeginCommandBuffer(g.pFrame->cmd, &commandBufferBeginInfo);
-        vkCmdBindDescriptorSets(g.pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                g.pipelineLayout, 0, 1, &g.descriptorSet, 0, NULL);
+        arVkCheck(g.vkBeginCommandBuffer(g.pFrame->cmd, &commandBufferBeginInfo));
+        g.vkCmdBindDescriptorSets(
+            g.pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            g.pipelineLayout, 0, 1, &g.descriptorSet, 0, NULL);
         g.pfnRecordCommands();
-        vkEndCommandBuffer(g.pFrame->cmd);
+        arVkCheck(g.vkEndCommandBuffer(g.pFrame->cmd));
     }
 }
 
 internal void
 arBeginTransfer(void)
 {
-    vkResetCommandPool(g.device, g.transferCommandPool, 0);
+    arVkCheck(g.vkResetCommandPool(g.device, g.transferCommandPool, 0));
 
     VkCommandBufferBeginInfo commandBufferBeginInfo;
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     commandBufferBeginInfo.pNext = NULL;
     commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     commandBufferBeginInfo.pInheritanceInfo = NULL;
-    vkBeginCommandBuffer(g.transferCommandBuffer, &commandBufferBeginInfo);
+    arVkCheck(g.vkBeginCommandBuffer(g.transferCommandBuffer, &commandBufferBeginInfo));
 }
 
 internal void
 arEndTransfer(void)
 {
-    vkEndCommandBuffer(g.transferCommandBuffer);
+    arVkCheck(g.vkEndCommandBuffer(g.transferCommandBuffer));
 
     VkCommandBufferSubmitInfo commandBufferInfo;
     commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
@@ -958,8 +1285,8 @@ arEndTransfer(void)
     submitInfo.commandBufferInfoCount = 1;
     submitInfo.pCommandBufferInfos = &commandBufferInfo;
     submitInfo.signalSemaphoreInfoCount = 0;
-    vkQueueSubmit2(g.graphicsQueue, 1, &submitInfo, NULL);
-    vkQueueWaitIdle(g.graphicsQueue);
+    arVkCheck(g.vkQueueSubmit2(g.graphicsQueue, 1, &submitInfo, NULL));
+    arVkCheck(g.vkQueueWaitIdle(g.graphicsQueue));
 }
 
 internal uint32_t
@@ -968,7 +1295,7 @@ arFindMemoryType(
     VkMemoryPropertyFlags properties)
 {
     VkPhysicalDeviceMemoryProperties memoryProperties;
-    vkGetPhysicalDeviceMemoryProperties(g.gpu, &memoryProperties);
+    g.vkGetPhysicalDeviceMemoryProperties(g.gpu, &memoryProperties);
 
     for (uint32_t memoryIndex = 0;
          memoryIndex < memoryProperties.memoryTypeCount;
@@ -1006,10 +1333,10 @@ arAllocBuffer(
     bufferCreateInfo.queueFamilyIndexCount = 0;
     bufferCreateInfo.size = pBuffer->size;
     bufferCreateInfo.usage = bufferUsage;
-    vkCreateBuffer(g.device, &bufferCreateInfo, NULL, (VkBuffer*)&pBuffer->handle.data[0]);
+    arVkCheck(g.vkCreateBuffer(g.device, &bufferCreateInfo, NULL, (VkBuffer*)&pBuffer->handle.data[0]));
 
     VkMemoryRequirements memoryRequirements;
-    vkGetBufferMemoryRequirements(g.device, pBuffer->handle.data[0], &memoryRequirements);
+    g.vkGetBufferMemoryRequirements(g.device, pBuffer->handle.data[0], &memoryRequirements);
 
     VkMemoryPropertyFlags preferedFlags[2];
     preferedFlags[0] = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
@@ -1028,6 +1355,11 @@ arAllocBuffer(
         typeIndex = arFindMemoryType(
             memoryRequirements.memoryTypeBits,
             fallbackFlags[isDynamic]);
+        
+        if (typeIndex == UINT32_MAX)
+        {
+            arVkCheck(VK_ERROR_INITIALIZATION_FAILED);
+        }
     }
 
     VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo;
@@ -1041,14 +1373,14 @@ arAllocBuffer(
     memoryAllocateInfo.pNext = &memoryAllocateFlagsInfo;
     memoryAllocateInfo.memoryTypeIndex = typeIndex;
     memoryAllocateInfo.allocationSize = memoryRequirements.size;
-    vkAllocateMemory(g.device, &memoryAllocateInfo, NULL, (VkDeviceMemory*)&pBuffer->handle.data[1]);
-    vkBindBufferMemory(g.device, pBuffer->handle.data[0], pBuffer->handle.data[1], 0);
+    arVkCheck(g.vkAllocateMemory(g.device, &memoryAllocateInfo, NULL, (VkDeviceMemory*)&pBuffer->handle.data[1]));
+    arVkCheck(g.vkBindBufferMemory(g.device, pBuffer->handle.data[0], pBuffer->handle.data[1], 0));
 
     VkBufferDeviceAddressInfo addressInfo;
     addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
     addressInfo.pNext = NULL;
     addressInfo.buffer = pBuffer->handle.data[0];
-    pBuffer->address = vkGetBufferDeviceAddress(g.device, &addressInfo);
+    pBuffer->address = g.vkGetBufferDeviceAddress(g.device, &addressInfo);
 }
 
 void
@@ -1058,7 +1390,7 @@ arCreateDynamicBuffer(
 {
     pBuffer->size = capacity;
     arAllocBuffer(pBuffer, true);
-    vkMapMemory(g.device, pBuffer->handle.data[1], 0, capacity, 0, &pBuffer->pMapped);
+    arVkCheck(g.vkMapMemory(g.device, pBuffer->handle.data[1], 0, capacity, 0, &pBuffer->pMapped));
 }
 
 void
@@ -1081,7 +1413,7 @@ arCreateStaticBuffer(
         region.dstOffset = 0;
         region.size = size;
 
-        vkCmdCopyBuffer(
+        g.vkCmdCopyBuffer(
             g.transferCommandBuffer,
             stagingBuffer.handle.data[0],
             pBuffer->handle.data[0],
@@ -1099,11 +1431,11 @@ arDestroyBuffer(
 {
     if (pBuffer->pMapped)
     {
-        vkUnmapMemory(g.device, pBuffer->handle.data[1]);
+        g.vkUnmapMemory(g.device, pBuffer->handle.data[1]);
     }
 
-    vkFreeMemory(g.device, pBuffer->handle.data[1], NULL);
-    vkDestroyBuffer(g.device, pBuffer->handle.data[0], NULL);
+    g.vkFreeMemory(g.device, pBuffer->handle.data[1], NULL);
+    g.vkDestroyBuffer(g.device, pBuffer->handle.data[0], NULL);
 }
 
 void
@@ -1176,10 +1508,10 @@ arCreateImage(
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     imageCreateInfo.queueFamilyIndexCount = 0;
     imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    vkCreateImage(g.device, &imageCreateInfo, NULL, (VkImage*)&pImage->handle.data[0]);
+    arVkCheck(g.vkCreateImage(g.device, &imageCreateInfo, NULL, (VkImage*)&pImage->handle.data[0]));
 
     VkMemoryRequirements memoryRequirements;
-    vkGetImageMemoryRequirements(g.device, pImage->handle.data[0], &memoryRequirements);
+    g.vkGetImageMemoryRequirements(g.device, pImage->handle.data[0], &memoryRequirements);
 
     const VkMemoryPropertyFlags preferedFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     const VkMemoryPropertyFlags fallbackFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -1189,6 +1521,11 @@ arCreateImage(
     if (typeIndex == UINT32_MAX)
     {
         typeIndex = arFindMemoryType(memoryRequirements.memoryTypeBits, fallbackFlags);
+
+        if (typeIndex == UINT32_MAX)
+        {
+            arVkCheck(VK_ERROR_INITIALIZATION_FAILED);
+        }
     }
 
     VkMemoryAllocateInfo memoryAllocateInfo;
@@ -1196,8 +1533,8 @@ arCreateImage(
     memoryAllocateInfo.pNext = NULL;
     memoryAllocateInfo.memoryTypeIndex = typeIndex;
     memoryAllocateInfo.allocationSize = memoryRequirements.size;
-    vkAllocateMemory(g.device, &memoryAllocateInfo, NULL, (VkDeviceMemory*)&pImage->handle.data[1]);
-    vkBindImageMemory(g.device, pImage->handle.data[0], pImage->handle.data[1], 0);
+    arVkCheck(g.vkAllocateMemory(g.device, &memoryAllocateInfo, NULL, (VkDeviceMemory*)&pImage->handle.data[1]));
+    arVkCheck(g.vkBindImageMemory(g.device, pImage->handle.data[0], pImage->handle.data[1], 0));
 
     VkImageViewCreateInfo imageViewCreateInfo;
     imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1215,7 +1552,7 @@ arCreateImage(
     imageViewCreateInfo.subresourceRange.levelCount = 1;
     imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
     imageViewCreateInfo.subresourceRange.layerCount = 1;
-    vkCreateImageView(g.device, &imageViewCreateInfo, NULL, (VkImageView*)&pImage->handle.data[2]);
+    arVkCheck(g.vkCreateImageView(g.device, &imageViewCreateInfo, NULL, (VkImageView*)&pImage->handle.data[2]));
 
     if (pImageCreateInfo->sampler)
     {
@@ -1235,7 +1572,7 @@ arCreateImage(
         descriptorWrite.pImageInfo = &descriptorImageInfo;
         descriptorWrite.pBufferInfo = NULL;
         descriptorWrite.pTexelBufferView = NULL;
-        vkUpdateDescriptorSets(g.device, 1, &descriptorWrite, 0, NULL);
+        g.vkUpdateDescriptorSets(g.device, 1, &descriptorWrite, 0, NULL);
     }
 }
 
@@ -1277,7 +1614,7 @@ arUpdateImage(
         dependencyInfo.bufferMemoryBarrierCount = 0;
         dependencyInfo.imageMemoryBarrierCount = 1;
         dependencyInfo.pImageMemoryBarriers = &imageMemoryBarrier;
-        vkCmdPipelineBarrier2(g.transferCommandBuffer, &dependencyInfo);
+        g.vkCmdPipelineBarrier2(g.transferCommandBuffer, &dependencyInfo);
 
         VkBufferImageCopy region;
         region.bufferOffset = 0;
@@ -1293,11 +1630,12 @@ arUpdateImage(
         region.imageExtent.width  = pImage->width;
         region.imageExtent.height = pImage->height;
         region.imageExtent.depth  = pImage->depth;
-        vkCmdCopyBufferToImage(g.transferCommandBuffer,
-                               stagingBuffer.handle.data[0],
-                               pImage->handle.data[0],
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                               1, &region);
+        g.vkCmdCopyBufferToImage(
+            g.transferCommandBuffer,
+            stagingBuffer.handle.data[0],
+            pImage->handle.data[0],
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1, &region);
 
         imageMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
         imageMemoryBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
@@ -1305,7 +1643,7 @@ arUpdateImage(
         imageMemoryBarrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
         imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        vkCmdPipelineBarrier2(g.transferCommandBuffer, &dependencyInfo);
+        g.vkCmdPipelineBarrier2(g.transferCommandBuffer, &dependencyInfo);
     }
     arEndTransfer();
 
@@ -1316,9 +1654,9 @@ void
 arDestroyImage(
     ArImage const* pImage)
 {
-    vkDestroyImageView(g.device, pImage->handle.data[2], NULL);
-    vkFreeMemory(g.device, pImage->handle.data[1], NULL);
-    vkDestroyImage(g.device, pImage->handle.data[0], NULL);
+    g.vkDestroyImageView(g.device, pImage->handle.data[2], NULL);
+    g.vkFreeMemory(g.device, pImage->handle.data[1], NULL);
+    g.vkDestroyImage(g.device, pImage->handle.data[0], NULL);
 }
 
 void
@@ -1328,12 +1666,26 @@ arCreateShaderFromFile(
 {
     LARGE_INTEGER fileSize;
     HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    GetFileSizeEx(file, &fileSize);
+
+    if (file == INVALID_HANDLE_VALUE ||
+        !GetFileSizeEx(file, &fileSize))
+    {
+        arError("Failed to create file");
+    }
 
     uint32_t* pBuffer = HeapAlloc(GetProcessHeap(), 0, fileSize.QuadPart);
     DWORD bytesRead;
 
-    ReadFile(file, pBuffer, fileSize.LowPart, &bytesRead, NULL);
+    if (!pBuffer)
+    {
+        arError("Failed to allocate memory");
+    }
+
+    if (!ReadFile(file, pBuffer, fileSize.LowPart, &bytesRead, NULL))
+    {
+        arError("Failed to read shader file");
+    }
+
     CloseHandle(file);
     arCreateShaderFromMemory(pShader, pBuffer, fileSize.QuadPart);
     HeapFree(GetProcessHeap(), 0, pBuffer);
@@ -1351,14 +1703,14 @@ arCreateShaderFromMemory(
     shaderModuleCreateInfo.flags = 0;
     shaderModuleCreateInfo.codeSize = codeSize;
     shaderModuleCreateInfo.pCode = pCode;
-    vkCreateShaderModule(g.device, &shaderModuleCreateInfo, NULL, (VkShaderModule*)pShader);
+    arVkCheck(g.vkCreateShaderModule(g.device, &shaderModuleCreateInfo, NULL, (VkShaderModule*)pShader));
 }
 
 void
 arDestroyShader(
     ArShader const* pShader)
 {
-    vkDestroyShaderModule(g.device, pShader->handle.data, NULL);
+    g.vkDestroyShaderModule(g.device, pShader->handle.data, NULL);
 }
 
 void
@@ -1522,14 +1874,14 @@ arCreateGraphicsPipeline(
     pipelineCreateInfo.pDynamicState = &dynamicState;
     pipelineCreateInfo.layout = g.pipelineLayout;
     pipelineCreateInfo.renderPass = NULL;
-    vkCreateGraphicsPipelines(g.device, NULL, 1, &pipelineCreateInfo, NULL, (VkPipeline*)pPipeline);
+    arVkCheck(g.vkCreateGraphicsPipelines(g.device, NULL, 1, &pipelineCreateInfo, NULL, (VkPipeline*)pPipeline));
 }
 
 void
 arDestroyPipeline(
     ArPipeline const* pPipeline)
 {
-    vkDestroyPipeline(g.device, pPipeline->handle.data, NULL);
+    g.vkDestroyPipeline(g.device, pPipeline->handle.data, NULL);
 }
 
 void
@@ -1538,21 +1890,22 @@ arCmdBeginRendering(
     ArAttachment const* pColorAttachments,
     ArAttachment const* pDepthAttachment)
 {
-    VkRenderingAttachmentInfo attachments[9];
+    VkRenderingAttachmentInfo attachments[8];
+    VkRenderingAttachmentInfo depthAttachment;
 
     if (pDepthAttachment)
     {
-        attachments[8].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        attachments[8].pNext = NULL;
-        attachments[8].imageView = pDepthAttachment->pImage->handle.data[2];
-        attachments[8].imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-        attachments[8].resolveMode = VK_RESOLVE_MODE_NONE;
-        attachments[8].resolveImageView = NULL;
-        attachments[8].resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        attachments[8].loadOp = pDepthAttachment->loadOp;
-        attachments[8].storeOp = pDepthAttachment->storeOp;
-        attachments[8].clearValue.depthStencil.depth = pDepthAttachment->clearValue.depth;
-        attachments[8].clearValue.depthStencil.stencil = 0;
+        depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depthAttachment.pNext = NULL;
+        depthAttachment.imageView = pDepthAttachment->pImage->handle.data[2];
+        depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+        depthAttachment.resolveImageView = NULL;
+        depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.loadOp = pDepthAttachment->loadOp;
+        depthAttachment.storeOp = pDepthAttachment->storeOp;
+        depthAttachment.clearValue.depthStencil.depth = pDepthAttachment->clearValue.depth;
+        depthAttachment.clearValue.depthStencil.stencil = 0;
     }
 
     for (uint32_t i = 0; i < colorAttachmentCount; ++i)
@@ -1604,16 +1957,16 @@ arCmdBeginRendering(
     renderingInfo.viewMask = 0;
     renderingInfo.colorAttachmentCount = colorAttachmentCount;
     renderingInfo.pColorAttachments = attachments;
-    renderingInfo.pDepthAttachment = pDepthAttachment ? &attachments[8] : NULL;
+    renderingInfo.pDepthAttachment = pDepthAttachment ? &depthAttachment : NULL;
     renderingInfo.pStencilAttachment = NULL;
-    vkCmdBeginRendering(g.pFrame->cmd, &renderingInfo);
+    g.vkCmdBeginRendering(g.pFrame->cmd, &renderingInfo);
 
     VkRect2D scissor;
     scissor.offset.x = 0;
     scissor.offset.y = 0;
     scissor.extent.width  = extent.width;
     scissor.extent.height = extent.height;
-    vkCmdSetScissor(g.pFrame->cmd, 0, 1, &scissor);
+    g.vkCmdSetScissor(g.pFrame->cmd, 0, 1, &scissor);
 
     VkViewport viewport;
     viewport.x = 0.0f;
@@ -1622,13 +1975,13 @@ arCmdBeginRendering(
     viewport.height = (float)extent.height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(g.pFrame->cmd, 0, 1, &viewport);
+    g.vkCmdSetViewport(g.pFrame->cmd, 0, 1, &viewport);
 }
 
 void
 arCmdEndRendering(void)
 {
-    vkCmdEndRendering(g.pFrame->cmd);
+    g.vkCmdEndRendering(g.pFrame->cmd);
 }
 
 void
@@ -1637,7 +1990,7 @@ arCmdPushConstants(
     uint32_t size,
     void const* pValues)
 {
-    vkCmdPushConstants(
+    g.vkCmdPushConstants(
         g.pFrame->cmd,
         g.pipelineLayout,
         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -1652,7 +2005,7 @@ arCmdBindIndexBuffer(
     uint64_t offset,
     ArIndexType indexType)
 {
-    vkCmdBindIndexBuffer(
+    g.vkCmdBindIndexBuffer(
         g.pFrame->cmd,
         *pBuffer->handle.data,
         offset,
@@ -1663,7 +2016,7 @@ void
 arCmdBindGraphicsPipeline(
     ArPipeline const* pPipeline)
 {
-    vkCmdBindPipeline(
+    g.vkCmdBindPipeline(
         g.pFrame->cmd,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         pPipeline->handle.data);
@@ -1774,7 +2127,7 @@ arCmdPipelineBarrier(
     dependencyInfo.bufferMemoryBarrierCount = 0;
     dependencyInfo.imageMemoryBarrierCount = barrierCount;
     dependencyInfo.pImageMemoryBarriers = imageMemoryBarriers;
-    vkCmdPipelineBarrier2(g.pFrame->cmd, &dependencyInfo);
+    g.vkCmdPipelineBarrier2(g.pFrame->cmd, &dependencyInfo);
 }
 
 void
@@ -1784,7 +2137,7 @@ arCmdDraw(
     uint32_t firstVertex,
     uint32_t firstInstance)
 {
-    vkCmdDraw(
+    g.vkCmdDraw(
         g.pFrame->cmd,
         vertexCount,
         instanceCount,
@@ -1799,7 +2152,7 @@ arCmdDrawIndirect(
     uint32_t drawCount,
     uint32_t stride)
 {
-    vkCmdDrawIndirect(
+    g.vkCmdDrawIndirect(
         g.pFrame->cmd,
         *pBuffer->handle.data,
         offset,
@@ -1816,7 +2169,7 @@ arCmdDrawIndirectCount(
     uint32_t maxDrawCount,
     uint32_t stride)
 {
-    vkCmdDrawIndirectCount(
+    g.vkCmdDrawIndirectCount(
         g.pFrame->cmd,
         *pBuffer->handle.data,
         offset,
@@ -1834,7 +2187,7 @@ arCmdDrawIndexed(
     int32_t vertexOffset,
     uint32_t firstInstance)
 {
-    vkCmdDrawIndexed(
+    g.vkCmdDrawIndexed(
         g.pFrame->cmd,
         indexCount,
         instanceCount,
@@ -1850,7 +2203,7 @@ arCmdDrawIndexedIndirect(
     uint32_t drawCount,
     uint32_t stride)
 {
-    vkCmdDrawIndexedIndirect(
+    g.vkCmdDrawIndexedIndirect(
         g.pFrame->cmd,
         *pBuffer->handle.data,
         offset,
@@ -1867,7 +2220,7 @@ arCmdDrawIndexedIndirectCount(
     uint32_t maxDrawCount,
     uint32_t stride)
 {
-    vkCmdDrawIndexedIndirectCount(
+    g.vkCmdDrawIndexedIndirectCount(
         g.pFrame->cmd,
         *pBuffer->handle.data,
         offset,
@@ -1944,43 +2297,51 @@ arHideCursor(void)
 }
 
 void
-arSetCursorPosition(int x, int y)
+arSetCursorPosition(
+    int x,
+    int y)
 {
     SetCursorPos(x, y);
 }
 
 bool
-arIsKeyDown(ArKey key)
+arIsKeyDown(
+    ArKey key)
 {
     return(g.keys[key].isDown);
 }
 
 bool
-arIsKeyPressed(ArKey key)
+arIsKeyPressed(
+    ArKey key)
 {
     return(g.keys[key].isPressed);
 }
 
 bool
-arIsKeyReleased(ArKey key)
+arIsKeyReleased(
+    ArKey key)
 {
     return(g.keys[key].isReleased);
 }
 
 bool
-arIsButtonDown(ArButton button)
+arIsButtonDown(
+    ArButton button)
 {
     return(g.buttons[button].isDown);
 }
 
 bool
-arIsButtonPressed(ArButton button)
+arIsButtonPressed(
+    ArButton button)
 {
     return(g.buttons[button].isPressed);
 }
 
 bool
-arIsButtonReleased(ArButton button)
+arIsButtonReleased(
+    ArButton button)
 {
     return(g.buttons[button].isReleased);
 }
@@ -1991,9 +2352,9 @@ arGetTime(void)
     LARGE_INTEGER value;
     QueryPerformanceCounter(&value);
 
-    return (double)
-        (value.QuadPart - g.timeOffset.QuadPart) /
-         g.timeFrequency.QuadPart;
+    return((double)
+        (value.QuadPart - g.timeOffset.QuadPart)
+        / g.timeFrequency.QuadPart);
 }
 
 double
@@ -2036,6 +2397,22 @@ uint32_t
 arGetRenderHeight(void)
 {
     return(g.extent.height);
+}
+
+int32_t
+arGetWindowPositionX(void)
+{
+    RECT point;
+    GetWindowRect(g.hwnd, &point);
+    return(point.left);
+}
+
+int32_t
+arGetWindowPositionY(void)
+{
+    RECT point;
+    GetWindowRect(g.hwnd, &point);
+    return(point.top);
 }
 
 float
@@ -2121,8 +2498,11 @@ arExecute(
             break;
         }
 
-        vkWaitForFences(g.device, 1, &g.fence, 0, UINT64_MAX);
-        vkResetFences(g.device, 1, &g.fence);
+        if (g.vkWaitForFences(g.device, 1, &g.fence, 0, UINT64_MAX) |
+            g.vkResetFences(g.device, 1, &g.fence))
+        {
+            arError("Failed to reset fences");
+        }
 
         switch (pApplicationInfo->pfnUpdateResources())
         {
@@ -2139,21 +2519,34 @@ arExecute(
             break;
         }
 
-        vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.acqSemaphore.semaphore, NULL, &g.imageIndex);
+        if (g.vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX, g.acqSemaphore.semaphore, NULL, &g.imageIndex))
+        {
+            arError("Failed to acquire image");
+        }
 
         g.graphicsCommandBufferInfo.commandBuffer = g.frames[g.imageIndex].cmd;
-        vkQueueSubmit2(g.graphicsQueue, 1, &g.submitInfo, g.fence);
+        if (g.vkQueueSubmit2(g.graphicsQueue, 1, &g.submitInfo, g.fence))
+        {
+            arError("Failed to submit commands");
+        }
 
         if (!g.unifiedQueue)
         {
             g.presentCommandBufferInfo.commandBuffer = g.frames[g.imageIndex].presentCmd;
-            vkQueueSubmit2(g.presentQueue, 1, &g.presentSubmitInfo, NULL);
+            
+            if (g.vkQueueSubmit2(g.presentQueue, 1, &g.presentSubmitInfo, NULL))
+            {
+                arError("Failed to submit commands");
+            }
         }
 
-        vkQueuePresentKHR(g.presentQueue, &g.presentInfo);
+        if (g.vkQueuePresentKHR(g.presentQueue, &g.presentInfo))
+        {
+            arError("Failed to present frame");
+        }
     }
 
-    vkDeviceWaitIdle(g.device);
+    g.vkDeviceWaitIdle(g.device);
     pApplicationInfo->pfnTeardown();
     arContextTeardown();
     arWindowTeardown();

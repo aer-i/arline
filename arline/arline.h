@@ -303,7 +303,8 @@ typedef struct ArApplicationInfo {
     void                                    (*pfnRecordCommands)();
     void                                    (*pfnUpdate)();
     ArRequest                               (*pfnUpdateResources)();
-    int                                     width, height;
+    int                                     width;
+    int                                     height;
     bool                                    enableVsync;
 } ArApplicationInfo;
 
@@ -399,6 +400,8 @@ uint32_t arGetWindowWidth(void);
 uint32_t arGetWindowHeight(void);
 uint32_t arGetRenderWidth(void);
 uint32_t arGetRenderHeight(void);
+int32_t arGetWindowPositionX(void);
+int32_t arGetWindowPositionY(void);
 
 void arPollEvents(void);
 void arWaitEvents(void);
