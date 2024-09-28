@@ -547,16 +547,16 @@ arSwapchainCreate(
         g.extent.height = surfaceCapabilities.minImageExtent.height;
     }
 
-    VkPresentModeKHR presentModes[6];
-    uint32_t presentModeCount;
-    arVkCheck(g.vkGetPhysicalDeviceSurfacePresentModesKHR(g.gpu, g.surface, &presentModeCount, NULL));
-    presentModeCount = min(presentModeCount, 6);
-    arVkCheck(g.vkGetPhysicalDeviceSurfacePresentModesKHR(g.gpu, g.surface, &presentModeCount, NULL));
-
     VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
 
-    if (vsync)
+    if (!vsync)
     {
+        VkPresentModeKHR presentModes[6];
+        uint32_t presentModeCount;
+        arVkCheck(g.vkGetPhysicalDeviceSurfacePresentModesKHR(g.gpu, g.surface, &presentModeCount, NULL));
+        presentModeCount = min(presentModeCount, 6);
+        arVkCheck(g.vkGetPhysicalDeviceSurfacePresentModesKHR(g.gpu, g.surface, &presentModeCount, presentModes));
+
         for ( ; presentModeCount--; )
         {
             if (presentModes[presentModeCount] == VK_PRESENT_MODE_MAILBOX_KHR)
