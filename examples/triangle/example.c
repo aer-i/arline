@@ -116,7 +116,7 @@ recordCommands()
     arCmdPipelineBarrier(1, &barriers[1]);
 }
 
-static int
+int
 main(void)
 {
     ArApplicationInfo applicationInfo;

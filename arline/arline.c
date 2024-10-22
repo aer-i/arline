@@ -1458,7 +1458,7 @@ arCreateImage(
     case AR_IMAGE_USAGE_TEXTURE:
         usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-        format = pImageCreateInfo->format;
+        format = (VkFormat)pImageCreateInfo->format;
         break;
     }
 
@@ -1728,12 +1728,12 @@ arCreateGraphicsPipeline(
     for (uint32_t i = pPipelineCreateInfo->blendAttachmentCount; i--; )
     {
         blendAttachments[i].blendEnable         = pPipelineCreateInfo->pBlendAttachments[i].blendEnable;
-        blendAttachments[i].srcColorBlendFactor = pPipelineCreateInfo->pBlendAttachments[i].srcColorFactor;
-        blendAttachments[i].dstColorBlendFactor = pPipelineCreateInfo->pBlendAttachments[i].dstColorFactor;
-        blendAttachments[i].colorBlendOp        = pPipelineCreateInfo->pBlendAttachments[i].colorBlendOp;
-        blendAttachments[i].srcAlphaBlendFactor = pPipelineCreateInfo->pBlendAttachments[i].srcAlphaFactor;
-        blendAttachments[i].dstAlphaBlendFactor = pPipelineCreateInfo->pBlendAttachments[i].dstAlphaFactor;
-        blendAttachments[i].alphaBlendOp        = pPipelineCreateInfo->pBlendAttachments[i].alphaBlendOp;
+        blendAttachments[i].srcColorBlendFactor = (VkBlendFactor)pPipelineCreateInfo->pBlendAttachments[i].srcColorFactor;
+        blendAttachments[i].dstColorBlendFactor = (VkBlendFactor)pPipelineCreateInfo->pBlendAttachments[i].dstColorFactor;
+        blendAttachments[i].colorBlendOp        = (VkBlendOp)pPipelineCreateInfo->pBlendAttachments[i].colorBlendOp;
+        blendAttachments[i].srcAlphaBlendFactor = (VkBlendFactor)pPipelineCreateInfo->pBlendAttachments[i].srcAlphaFactor;
+        blendAttachments[i].dstAlphaBlendFactor = (VkBlendFactor)pPipelineCreateInfo->pBlendAttachments[i].dstAlphaFactor;
+        blendAttachments[i].alphaBlendOp        = (VkBlendOp)pPipelineCreateInfo->pBlendAttachments[i].alphaBlendOp;
         blendAttachments[i].colorWriteMask      = pPipelineCreateInfo->pBlendAttachments[i].colorWriteMask;
     }
 
@@ -1775,7 +1775,7 @@ arCreateGraphicsPipeline(
     inputAssemblyState.pNext = NULL;
     inputAssemblyState.flags = 0;
     inputAssemblyState.primitiveRestartEnable = false;
-    inputAssemblyState.topology = pPipelineCreateInfo->topology;
+    inputAssemblyState.topology = (VkPrimitiveTopology)pPipelineCreateInfo->topology;
 
     VkPipelineViewportStateCreateInfo viewportState;
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -1792,9 +1792,9 @@ arCreateGraphicsPipeline(
     rasterizationState.flags = 0;
     rasterizationState.depthClampEnable = false;
     rasterizationState.rasterizerDiscardEnable = false;
-    rasterizationState.polygonMode = pPipelineCreateInfo->polygonMode;
+    rasterizationState.polygonMode = (VkPolygonMode)pPipelineCreateInfo->polygonMode;
     rasterizationState.cullMode = pPipelineCreateInfo->cullMode;
-    rasterizationState.frontFace = pPipelineCreateInfo->frontFace;
+    rasterizationState.frontFace = (VkFrontFace)pPipelineCreateInfo->frontFace;
     rasterizationState.depthBiasEnable = false;
     rasterizationState.lineWidth = 1.0f;
     rasterizationState.depthBiasClamp = 0.0f;
@@ -1817,7 +1817,7 @@ arCreateGraphicsPipeline(
     depthStencilState.depthBoundsTestEnable = false;
     depthStencilState.depthWriteEnable = pPipelineCreateInfo->depthState.depthWriteEnable;
     depthStencilState.depthTestEnable = pPipelineCreateInfo->depthState.depthTestEnable;
-    depthStencilState.depthCompareOp = pPipelineCreateInfo->depthState.compareOp;
+    depthStencilState.depthCompareOp = (VkCompareOp)pPipelineCreateInfo->depthState.compareOp;
     depthStencilState.front.failOp = VK_STENCIL_OP_KEEP;
     depthStencilState.front.passOp = VK_STENCIL_OP_KEEP;
     depthStencilState.front.depthFailOp = VK_STENCIL_OP_KEEP;
@@ -1898,8 +1898,8 @@ arCmdBeginRendering(
         depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
         depthAttachment.resolveImageView = NULL;
         depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        depthAttachment.loadOp = pDepthAttachment->loadOp;
-        depthAttachment.storeOp = pDepthAttachment->storeOp;
+        depthAttachment.loadOp = (VkAttachmentLoadOp)pDepthAttachment->loadOp;
+        depthAttachment.storeOp = (VkAttachmentStoreOp)pDepthAttachment->storeOp;
         depthAttachment.clearValue.depthStencil.depth = pDepthAttachment->clearValue.depth;
         depthAttachment.clearValue.depthStencil.stencil = 0;
     }
@@ -1921,8 +1921,8 @@ arCmdBeginRendering(
         attachments[i].resolveMode = VK_RESOLVE_MODE_NONE;
         attachments[i].resolveImageView = NULL;
         attachments[i].resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        attachments[i].loadOp = pColorAttachments[i].loadOp;
-        attachments[i].storeOp = pColorAttachments[i].storeOp;
+        attachments[i].loadOp = (VkAttachmentLoadOp)pColorAttachments[i].loadOp;
+        attachments[i].storeOp = (VkAttachmentStoreOp)pColorAttachments[i].storeOp;
         attachments[i].clearValue.color.int32[0] = pColorAttachments[i].clearValue.color.int32[0];
         attachments[i].clearValue.color.int32[1] = pColorAttachments[i].clearValue.color.int32[1];
         attachments[i].clearValue.color.int32[2] = pColorAttachments[i].clearValue.color.int32[2];
@@ -2005,7 +2005,7 @@ arCmdBindIndexBuffer(
         g.pFrame->cmd,
         *pBuffer->handle.data,
         offset,
-        indexType);
+        (VkIndexType)indexType);
 }
 
 void
@@ -2077,8 +2077,8 @@ arCmdPipelineBarrier(
         imageMemoryBarriers[i].srcAccessMask = arImageLayoutToAccess(pBarriers[i].oldLayout);
         imageMemoryBarriers[i].dstStageMask = arImageLayoutToPipelineStage(pBarriers[i].newLayout);
         imageMemoryBarriers[i].dstAccessMask = arImageLayoutToAccess(pBarriers[i].newLayout);
-        imageMemoryBarriers[i].oldLayout = pBarriers[i].oldLayout;
-        imageMemoryBarriers[i].newLayout = pBarriers[i].newLayout;
+        imageMemoryBarriers[i].oldLayout = (VkImageLayout)pBarriers[i].oldLayout;
+        imageMemoryBarriers[i].newLayout = (VkImageLayout)pBarriers[i].newLayout;
         imageMemoryBarriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         imageMemoryBarriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         imageMemoryBarriers[i].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
